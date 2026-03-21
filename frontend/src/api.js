@@ -19,14 +19,16 @@ class ApiLogger {
   }
 }
 
-export const generateCode = async (file, targetJson) => {
+export const generateCode = async (file, targetJson, provider = 'auto') => {
   ApiLogger.add('info', `Sending request: POST ${API_URL}/generate`)
   ApiLogger.add('info', `File: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`)
   ApiLogger.add('info', `Target JSON length: ${targetJson.length} chars`)
+  ApiLogger.add('info', `LLM Provider: ${provider}`)
 
   const formData = new FormData()
   formData.append('file', file)
   formData.append('target_json', targetJson)
+  formData.append('llm_provider', provider)
 
   const startTime = Date.now()
 
@@ -93,10 +95,11 @@ export const generateTests = async (typescriptCode, targetJson, filename) => {
   return await response.json()
 }
 
-export const fullPipeline = async (file, targetJson) => {
+export const fullPipeline = async (file, targetJson, provider = 'auto') => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('target_json', targetJson)
+  formData.append('llm_provider', provider)
 
   const startTime = Date.now()
 
@@ -116,7 +119,7 @@ export const fullPipeline = async (file, targetJson) => {
 
     const data = await response.json()
     ApiLogger.add('success', `Full pipeline: code + tests + validation`)
-    
+
     return data
   } catch (err) {
     if (err.name === 'TypeError' && err.message.includes('fetch')) {

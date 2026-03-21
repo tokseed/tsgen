@@ -1,13 +1,15 @@
 # TypeScript Code Generator
 
-AI-powered сервис для генерации TypeScript-кода преобразования файлов в JSON с использованием GigaChat AI.
+AI-powered сервис для генерации TypeScript-кода преобразования файлов в JSON с использованием GigaChat и OpenRouter AI.
 
 ## 🚀 Возможности
 
 - **Генерация TypeScript кода** — автоматическое создание кода для преобразования файлов в JSON
 - **Поддержка форматов**: CSV, Excel (.xls, .xlsx), PDF, DOCX, PNG, JPG
+- **Два AI провайдера** — GigaChat (Сбер) и OpenRouter с переключением в UI
 - **Валидация кода** — проверка сгенерированного кода на ошибки
 - **Генерация тестов** — автоматическое создание unit-тестов для функции `transformData`
+- **Минималистичный дизайн** — современный UI в цветах Сбера с анимациями
 - **Dev Panel** — логирование всех запросов к API для отладки
 
 ## 📋 Требования
@@ -23,43 +25,7 @@ AI-powered сервис для генерации TypeScript-кода преоб
 - Node.js 18 или выше
 - npm или yarn
 
-## 🌐 Деплой в сеть
-
-### Автоматический деплой (CI/CD)
-
-Проект настроен для автоматического деплоя через GitHub Actions:
-
-**Фронтенд → GitHub Pages:**
-1. Зайдите в Settings → Pages → Build and Deployment
-2. В source выберите "GitHub Actions"
-3. При пуше в main фронтенд автоматически соберётся и задеплоится
-
-**Бэкенд → Render:**
-1. Зарегистрируйтесь на https://render.com
-2. Создайте новый Web Service
-3. Подключите GitHub репозиторий
-4. Используйте настройки из `render.yaml`:
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-5. Добавьте переменную окружения `GIGACHAT_CREDENTIALS`
-
-### Ручной деплой
-
-**Фронтенд:**
-```bash
-cd frontend
-npm run build
-# Загрузите dist/ на любой хостинг
-```
-
-**Бэкенд:**
-```bash
-# На любом VPS или облаке
-pip install -r requirements.txt
-uvicorn src.main:app --host 0.0.0.0 --port 8000
-```
-
-## 🔧 Установка (локальная разработка)
+## 🎯 Быстрый старт
 
 ### 1. Клонирование репозитория
 
@@ -74,12 +40,23 @@ cd tsgen
 # Установка зависимостей
 pip install -r requirements.txt
 
-# Настройка GigaChat credentials
-# Скопируйте .env.example в .env и заполните credentials
+# Настройка LLM провайдеров
 cp .env.example .env
+# Откройте .env и добавьте API ключи
 ```
 
-**Важно**: Файл `.env` уже содержит настроенные credentials для GigaChat. Не изменяйте его без необходимости.
+**Настройка провайдеров:**
+
+```bash
+# Для GigaChat (Сбер):
+GIGACHAT_CREDENTIALS=client_id:client_secret
+
+# Для OpenRouter:
+OPENROUTER_API_KEY=your_api_key
+
+# Автовыбор (использовать доступный):
+LLM_PROVIDER=auto
+```
 
 ### 3. Настройка фронтенда
 
@@ -94,43 +71,29 @@ npm install
 
 ### Быстрый запуск (Windows)
 
-**Один скрипт для всего:**
 ```bash
 start.bat
 ```
-
-Это создаст виртуальное окружение, установит зависимости и запустит оба сервера.
 
 ### Раздельный запуск
 
 **Терминал 1 — Бэкенд:**
 ```bash
-run_backend.bat
+python app.py
 ```
-Бэкенд запустится на `http://localhost:8000`
 
 **Терминал 2 — Фронтенд:**
 ```bash
-run_frontend.bat
-```
-Фронтенд запустится на `http://localhost:5173`
-
-### Ручной запуск
-
-**Бэкенд:**
-```bash
-python -m venv venv
-venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-python src\main.py
+cd frontend && npm run dev
 ```
 
-**Фронтенд:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+## 🎨 Дизайн
+
+Проект использует современный минималистичный дизайн в цветах Сбера:
+- **Основной цвет**: `#21a038` (Сбер зелёный)
+- **Градиенты**: от `#21a038` до `#2ecc71`
+- **Анимации**: плавные переходы, hover-эффекты, pulse-анимации
+- **Логотип**: стилизованная буква "С" с элементами кода
 
 ## 📡 API Endpoints
 
@@ -143,30 +106,29 @@ npm run dev
 | `/api/generate-tests` | POST | Генерация unit-тестов |
 | `/api/full-pipeline` | POST | Полный цикл: код + тесты + валидация |
 
-### Пример запроса к API
+Все endpoints поддерживают параметр `llm_provider` для выбора провайдера:
+- `gigachat` — использовать GigaChat
+- `openrouter` — использовать OpenRouter
+- `auto` — автовыбор (по умолчанию)
+
+### Пример запроса
 
 ```bash
 curl -X POST http://localhost:8000/api/generate \
   -F "file=@data.csv" \
-  -F "target_json={\"name\": \"string\", \"age\": \"number\"}"
+  -F "target_json={\"name\": \"string\", \"age\": \"number\"}" \
+  -F "llm_provider=openrouter"
 ```
 
-## 🔐 Настройка GigaChat
+## 🔧 Промпт для генерации
 
-Credentials уже настроены в файле `.env`. Если нужно получить новые:
+Сервис использует детально проработанный системный промпт с чётким ТЗ:
 
-1. Перейдите на https://developers.sber.ru/
-2. Создайте новое приложение
-3. Получите `client_id` и `client_secret`
-4. Закодируйте в base64: `client_id:client_secret`
-5. Обновите `GIGACHAT_CREDENTIALS` в файле `.env`
-
-## 🧪 Тестирование
-
-```bash
-# Запуск тестов бэкенда
-pytest tests/
-```
+1. **Архитектура кода** — строгие интерфейсы, точные типы
+2. **Парсинг и преобразование** — устойчивый к ошибкам
+3. **Обработка ошибок** — try-catch, валидация полей
+4. **Качество кода** — JSDoc, best practices
+5. **Формат вывода** — только код в markdown блоке
 
 ## 📁 Структура проекта
 
@@ -174,7 +136,7 @@ pytest tests/
 tsgen/
 ├── src/                    # Бэкенд (FastAPI)
 │   ├── main.py            # API сервер
-│   ├── converter.py       # Генерация TypeScript
+│   ├── converter.py       # Генерация TypeScript (GigaChat + OpenRouter)
 │   ├── validator.py       # Валидация кода
 │   ├── test_generator.py  # Генерация тестов
 │   └── cli.py             # CLI утилита
@@ -182,22 +144,37 @@ tsgen/
 │   ├── src/
 │   │   ├── App.jsx        # Основное приложение
 │   │   ├── api.js         # API клиент
+│   │   ├── ProviderToggle.jsx  # Переключатель провайдеров
 │   │   ├── FileUpload.jsx # Компонент загрузки
 │   │   └── ...
 │   ├── package.json
 │   └── vite.config.js
 ├── tests/                 # Тесты
 ├── requirements.txt       # Python зависимости
-├── .env                   # Переменные окружения (не коммитить!)
-└── .env.example           # Шаблон переменных
+├── .env                   # Переменные окружения
+├── .env.example           # Шаблон переменных
+└── IMPROVEMENTS.md        # Предложения по улучшению
 ```
 
 ## 🛠️ Технологии
 
-- **Бэкенд**: FastAPI, LangChain, GigaChat
-- **Фронтенд**: React 18, Vite, TailwindCSS, Framer Motion
+- **Бэкенд**: FastAPI, LangChain, GigaChat, OpenRouter
+- **Фронтенд**: React 18, Vite, TailwindCSS, Framer Motion, Lucide Icons
 - **Обработка файлов**: pandas, openpyxl, pypdf, python-docx, pytesseract
+
+## 💡 Предложения по улучшению
+
+См. файл [IMPROVEMENTS.md](IMPROVEMENTS.md) с подробным списком улучшений:
+
+- 🔴 **Краткосрочные**: История генераций, предпросмотр данных, шаблоны схем
+- 🟡 **Среднесрочные**: Мультифайловая загрузка, кастомизация промпта, live-валидация
+- 🟢 **Долгосрочные**: REST API, VS Code extension, командная работа
 
 ## 📝 Лицензия
 
 Проект создан в рамках Хакатона Сбер 2026.
+
+## 👤 Контакты
+
+- Telegram: [t.me/m3rcin](https://t.me/m3rcin)
+- Хакатон Сбер 2026

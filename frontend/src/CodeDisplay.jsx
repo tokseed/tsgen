@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode } from 'lucide-react'
+import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle } from 'lucide-react'
 import Prism from 'prismjs'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/themes/prism-tomorrow.css'
 
-export function CodeDisplay({ code, filename, onGenerateTests, onValidate, validation, onCopy, copied }) {
+export function CodeDisplay({ code, filename, onGenerateTests, onValidate, validation, showValidation = false, onCopy, copied }) {
   const [downloaded, setDownloaded] = useState(false)
   const [activeTab, setActiveTab] = useState('code')
   const [testsCode, setTestsCode] = useState(null)
   const [isGeneratingTests, setIsGeneratingTests] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
+  const [showValidationPanel, setShowValidationPanel] = useState(showValidation)
 
   useEffect(() => {
     Prism.highlightAll()
   }, [code, testsCode, activeTab])
+
+  useEffect(() => {
+    setShowValidationPanel(showValidation)
+  }, [showValidation])
 
   const handleCopy = () => {
     const textToCopy = activeTab === 'tests' && testsCode ? testsCode : code
@@ -58,6 +63,7 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
     setIsValidating(true)
     try {
       await onValidate()
+      setShowValidationPanel(true)
     } catch (err) {
       console.error('Validation failed:', err)
     } finally {
@@ -125,42 +131,93 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
           )}
           {isValidating ? 'Проверка...' : validation ? (validation.valid ? '✓ Валидно' : '✕ Ошибки') : 'Валидация'}
         </button>
+        {validation && (
+          <button
+            onClick={() => setShowValidationPanel(!showValidationPanel)}
+            className="px-5 py-3 text-sm font-semibold rounded-xl bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-all duration-300 flex items-center gap-2"
+          >
+            <Info className="w-4 h-4" />
+            {showValidationPanel ? 'Скрыть' : 'Детали'}
+          </button>
+        )}
       </div>
 
-      {/* Validation Result */}
-      {validation && (
-        <div className={`mb-6 p-6 rounded-2xl border-2 backdrop-blur-sm fade-in ${
+      {/* Validation Result Panel */}
+      {showValidationPanel && validation && (
+        <div className={`mb-6 p-6 rounded-2xl border-2 backdrop-blur-sm slide-in-down ${
           validation.valid
             ? 'bg-green-500/20 border-green-500/50'
             : 'bg-red-500/20 border-red-500/50'
         }`}>
           <div className="flex items-start gap-4">
             {validation.valid ? (
-              <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center shadow-lg">
-                <ShieldCheck className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center shadow-lg scale-in">
+                <CheckCircle className="w-6 h-6 text-white" />
               </div>
             ) : (
-              <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg">
-                <ShieldAlert className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg scale-in">
+                <AlertCircle className="w-6 h-6 text-white" />
               </div>
             )}
             <div className="flex-1">
               <p className={`font-bold text-lg ${validation.valid ? 'text-green-300' : 'text-red-300'}`}>
                 {validation.valid ? 'Код валиден' : 'Обнаружены ошибки'}
               </p>
-              {validation.errors && validation.errors.length > 0 && (
-                <ul className="mt-3 text-sm text-red-200 list-disc list-inside space-y-1">
-                  {validation.errors.slice(0, 5).map((err, i) => (
-                    <li key={i}>{err}</li>
-                  ))}
-                </ul>
+              
+              {validation.metrics && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-sm text-white">
+                    <span className="opacity-70">Строк:</span> {validation.metrics.lines || 0}
+                  </div>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-sm text-white">
+                    <span className="opacity-70">Функций:</span> {validation.metrics.function_count || 0}
+                  </div>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1 text-sm text-white">
+                    <span className="opacity-70">Интерфейсов:</span> {validation.metrics.interface_count || 0}
+                  </div>
+                </div>
               )}
+
+              {validation.errors && validation.errors.length > 0 && (
+                <div className="mt-4">
+                  <p className="font-semibold text-red-200 mb-2 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4" />
+                    Ошибки ({validation.errors.length})
+                  </p>
+                  <ul className="text-sm text-red-100 list-disc list-inside space-y-1 bg-red-900/30 rounded-lg p-3">
+                    {validation.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
               {validation.warnings && validation.warnings.length > 0 && (
-                <ul className="mt-3 text-sm text-amber-200 list-disc list-inside space-y-1">
-                  {validation.warnings.slice(0, 3).map((warn, i) => (
-                    <li key={i}>{warn}</li>
-                  ))}
-                </ul>
+                <div className="mt-4">
+                  <p className="font-semibold text-amber-200 mb-2 flex items-center gap-2">
+                    <Info className="w-4 h-4" />
+                    Предупреждения ({validation.warnings.length})
+                  </p>
+                  <ul className="text-sm text-amber-100 list-disc list-inside space-y-1 bg-amber-900/30 rounded-lg p-3">
+                    {validation.warnings.map((warn, i) => (
+                      <li key={i}>{warn}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {validation.info && validation.info.length > 0 && (
+                <div className="mt-4">
+                  <p className="font-semibold text-blue-200 mb-2 flex items-center gap-2">
+                    <Info className="w-4 h-4" />
+                    Информация
+                  </p>
+                  <ul className="text-sm text-blue-100 list-disc list-inside space-y-1 bg-blue-900/30 rounded-lg p-3">
+                    {validation.info.map((info, i) => (
+                      <li key={i}>{info}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           </div>
@@ -235,36 +292,36 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
 
 export function EmptyState() {
   return (
-    <div className="card-glass p-16 flex flex-col items-center text-center fade-in">
+    <div className="bg-gradient-to-br from-slate-50 via-emerald-50/30 to-slate-100 p-16 flex flex-col items-center text-center fade-in rounded-3xl border-2 border-slate-200/50 shadow-xl">
       <div className="relative mb-8">
-        <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse" />
-        <div className="relative p-8 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 shadow-2xl">
-          <Sparkles className="w-20 h-20 text-white" />
+        <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-2xl animate-pulse" />
+        <div className="relative p-8 rounded-full bg-gradient-to-br from-emerald-100 to-green-100 backdrop-blur-lg border-2 border-emerald-300 shadow-xl">
+          <Sparkles className="w-20 h-20 text-emerald-600" />
         </div>
       </div>
-      <h3 className="text-2xl font-bold text-white mb-3">Готов к генерации</h3>
-      <p className="text-lg text-white/80 max-w-md leading-relaxed">
-        Загрузите файл с данными и укажите желаемую структуру JSON. 
-        GigaChat AI создаст оптимальный TypeScript код.
+      <h3 className="text-2xl font-bold text-slate-800 mb-3">Готов к генерации</h3>
+      <p className="text-lg text-slate-600 max-w-md leading-relaxed">
+        Загрузите файл с данными и укажите желаемую структуру JSON.
+        AI создаст оптимальный TypeScript код.
       </p>
-      <div className="mt-8 flex items-center gap-3 text-sm text-white/60">
-        <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+      <div className="mt-8 flex items-center gap-3 text-sm text-slate-600">
+        <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
         Ожидание входных данных
       </div>
-      
+
       {/* Quick tips */}
       <div className="mt-10 grid grid-cols-3 gap-4 w-full max-w-lg">
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
-          <FileCode className="w-6 h-6 text-emerald-300 mx-auto mb-2" />
-          <p className="text-xs text-white/70">Загрузите файл</p>
+        <div className="bg-white rounded-xl p-4 text-center border-2 border-emerald-200 shadow-md">
+          <FileCode className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
+          <p className="text-xs text-slate-700 font-medium">Загрузите файл</p>
         </div>
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
-          <Code2 className="w-6 h-6 text-amber-300 mx-auto mb-2" />
-          <p className="text-xs text-white/70">Опишите схему</p>
+        <div className="bg-white rounded-xl p-4 text-center border-2 border-amber-200 shadow-md">
+          <Code2 className="w-6 h-6 text-amber-600 mx-auto mb-2" />
+          <p className="text-xs text-slate-700 font-medium">Опишите схему</p>
         </div>
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center">
-          <Zap className="w-6 h-6 text-purple-300 mx-auto mb-2" />
-          <p className="text-xs text-white/70">Получите код</p>
+        <div className="bg-white rounded-xl p-4 text-center border-2 border-purple-200 shadow-md">
+          <Zap className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+          <p className="text-xs text-slate-700 font-medium">Получите код</p>
         </div>
       </div>
     </div>

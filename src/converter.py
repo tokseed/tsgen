@@ -1,5 +1,6 @@
 """
 TypeScript Code Generator - Core Module
+Поддержка GigaChat (Сбер) и OpenRouter API
 """
 
 import os
@@ -8,8 +9,10 @@ import base64
 import uuid
 import requests
 import time
+import hashlib
 from typing import Optional, Dict, Any
 from pathlib import Path
+from datetime import datetime, timedelta
 
 import pandas as pd
 
@@ -22,9 +25,18 @@ from docx import Document
 from PIL import Image
 import pytesseract
 
+# Импорт кэша
+try:
+    from cache import get_cache_manager
+    CACHE_ENABLED = True
+except ImportError:
+    CACHE_ENABLED = False
+    def get_cache_manager():
+        return None
+
 
 class GigaChatAuth:
-    """GigaChat API авторизация."""
+    """GigaChat API авторизация (Сбер)."""
 
     AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1"
@@ -112,6 +124,105 @@ class GigaChatAuth:
                 timeout=10
             )
             return {"status": "ok", "models": response.json()}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+
+class OpenRouterAuth:
+    """OpenRouter API клиент."""
+
+    BASE_URL = "https://openrouter.ai/api/v1"
+    
+    # Рекомендуемые модели для генерации кода
+    MODELS = {
+        "best": "anthropic/claude-3.5-sonnet",
+        "balanced": "meta-llama/llama-3.3-70b-instruct",
+        "fast": "meta-llama/llama-3.2-3b-instruct:free",
+        "free": "google/gemma-2-9b-it:free",
+    }
+
+    def __init__(self, api_key: str, model_preset: str = "balanced"):
+        self.api_key = api_key
+        self.model = self.MODELS.get(model_preset, self.MODELS["balanced"])
+
+    def chat(self, messages: list, model: str = None) -> str:
+        """Отправка запроса к OpenRouter."""
+        model_to_use = model or self.model
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    f"{self.BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://github.com/tsgen",
+                        "X-Title": "TS Generator",
+                    },
+                    json={
+                        "model": model_to_use,
+                        "messages": messages,
+                        "temperature": 0.3,
+                        "max_tokens": 4000,
+                        "top_p": 0.95,
+                        "frequency_penalty": 0.1,
+                        "presence_penalty": 0.1,
+                    },
+                    timeout=120,
+                )
+                
+                # Обработка ошибок API
+                if response.status_code == 429:
+                    raise ValueError("Rate limit превышен. Подождите немного.")
+                elif response.status_code == 401:
+                    raise ValueError("Неверный API ключ OpenRouter.")
+                elif response.status_code == 402:
+                    raise ValueError("Недостаточно кредитов на счету OpenRouter.")
+                
+                response.raise_for_status()
+
+                result = response.json()
+                
+                # Проверка на ошибки в ответе
+                if "error" in result:
+                    error_msg = result["error"].get("message", "Неизвестная ошибка API")
+                    raise ValueError(f"Ошибка OpenRouter API: {error_msg}")
+                
+                if "choices" not in result or len(result["choices"]) == 0:
+                    raise ValueError("Пустой ответ от OpenRouter")
+
+                content = result["choices"][0]["message"]["content"]
+                
+                if not content or content.strip() == "":
+                    raise ValueError("Пустое содержимое ответа")
+                
+                return content
+                
+            except requests.exceptions.Timeout:
+                if attempt == max_retries - 1:
+                    raise ValueError("Таймаут соединения с OpenRouter. Попробуйте позже.")
+                time.sleep(retry_delay * (attempt + 1))
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    raise ValueError(f"Ошибка соединения: {str(e)}")
+                time.sleep(retry_delay)
+        
+        raise ValueError("Не удалось выполнить запрос после нескольких попыток")
+
+    def check_connection(self) -> dict:
+        """Проверка подключения к API."""
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=10
+            )
+            if response.status_code == 200:
+                return {"status": "ok", "models": response.json()}
+            return {"status": "error", "error": f"HTTP {response.status_code}"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
@@ -222,85 +333,223 @@ class TypeScriptCodeGenerator:
 
     SYSTEM_PROMPT = """Ты — старший TypeScript разработчик в Сбер. Твоя задача — создать профессиональный TypeScript код для парсинга файлов и преобразования данных в JSON.
 
-## Входные данные:
+## ВХОДНЫЕ ДАННЫЕ:
 - Тип файла: {file_type}
 - Структура данных: {structure}
-- Пример содержимого (первые строки):
+- Пример содержимого (первые строки/символы):
 {content}
 
-## Требуемый формат вывода (JSON Schema):
+## ЦЕЛЕВАЯ JSON СХЕМА (обязательно для соблюдения):
 {target_json}
 
-## Требования к коду (СТРОГО):
+## ТЕХНИЧЕСКОЕ ЗАДАНИЕ (СТРОГОЕ ТРЕБОВАНИЕ):
 
-### 1. Интерфейсы и типизация
-- Создай строгие TypeScript интерфейсы для всех структур данных
-- Используй точные типы (string, number, boolean), избегай any
-- Для необязательных полей из JSON используй ? (опциональные поля)
-- Экспортируй все публичные интерфейсы и функции
+### 1. АРХИТЕКТУРА КОДА
 
-### 2. Функция transformData
-- Сигнатура: `export async function transformData(input: string): Promise<{interface_name}>`
-- Должна корректно обрабатывать входной формат ({file_type})
-- Парсинг должен быть устойчивым к ошибкам (trim, проверка на пустые значения)
-- Преобразование типов: строки в числа через Number(), булевы через явное сравнение
-- Валидируй обязательные поля из целевой схемы
+#### 1.1 Интерфейсы
+- Создай ПОЛНЫЕ TypeScript интерфейсы для ВСЕХ структур данных
+- Используй ТОЧНЫЕ типы: string, number, boolean, null | undefined
+- КАТЕГОРИЧЕСКИ избегай `any` — используй `unknown` или конкретные типы
+- Для необязательных полей используй `?` (optional modifier)
+- Для nullable полей используй `| null`
+- Экспортируй ВСЕ публичные интерфейсы: `export interface`
 
-### 3. Обработка ошибок
-- Оборачивай все операции в try/catch
-- Выбрасывай понятные ошибки с описанием проблемы
-- Обрабатывай edge cases: пустой файл, неверный формат, missing поля
+#### 1.2 Основная функция
+- Сигнатура (ОБЯЗАТЕЛЬНА): `export async function transformData(input: string): Promise<{interface_name}>`
+- Функция должна быть `async` даже если не использует await (для единообразия)
+- Возвращаемый тип должен ТОЧНО соответствовать целевой JSON схеме
 
-### 4. Качество кода
-- Без внешних библиотек (только стандартная библиотека TypeScript/JavaScript)
-- JSDoc комментарии для всех экспортируемых функций (описание, @param, @returns)
-- Чистый, читаемый код с понятными именами переменных
-- Следуй TypeScript Best Practices
+### 2. ПАРСИНГ И ПРЕОБРАЗОВАНИЕ
 
-### 5. Формат вывода
-- Верни ТОЛЬКО TypeScript код в markdown блоке: ```typescript ... ```
-- Без объяснений, без текста до или после кода
-- Код должен быть готов к использованию в production
+#### 2.1 Обработка входных данных
+- Определи формат входных данных по типу файла ({file_type})
+- Для CSV/Excel: раздели на строки, затем на колонки
+- Для JSON: распарси через JSON.parse()
+- Для текста: извлеки структурированные данные
 
-## Пример структуры ответа:
+#### 2.2 Преобразование типов
+- Строки в числа: `Number(value)` или `parseFloat(value)` или `parseInt(value, 10)`
+- Строки в булевы: `value.toLowerCase() === 'true'` или `value === '1'`
+- Пустые значения: `value.trim() === '' ? null : value`
+- Обработка NaN: `const num = Number(val); if (isNaN(num)) throw new Error(...)`
+
+#### 2.3 Валидация данных
+- Проверь ВСЕ обязательные поля из целевой схемы
+- Проверь типы данных после преобразования
+- Выбрасывай ошибку при несоответствии схемы
+
+### 3. ОБРАБОТКА ОШИБОК (ОБЯЗАТЕЛЬНО)
+
+#### 3.1 Try-catch блоки
+- Оберни КАЖДУЮ операцию парсинга в try-catch
+- Логируй ошибки с контекстом (номер строки, имя поля)
+
+#### 3.2 Типы ошибок
+- Пустой файл: `throw new Error('Пустой файл: входные данные не содержат строк')`
+- Неверный формат: `throw new Error('Неверный формат: ожидался CSV, получен...')`
+- Missing поля: `throw new Error('Отсутствует обязательное поле: fieldName')`
+- Ошибка типа: `throw new Error('Неверный тип поля fieldName: ожидался number, получен string')`
+
+### 4. КАЧЕСТВО КОДА
+
+#### 4.1 Стиль кода
+- БЕЗ внешних библиотек (только стандартная библиотека ES2020+)
+- Используй const/let, избегай var
+- Стрелочные функции для callback'ов
+- Template literals для интерполяции строк
+
+#### 4.2 Документация
+- JSDoc для ВСЕХ экспортируемых функций:
+  ```typescript
+  /**
+   * Описание функции
+   * @param input - Описание параметра
+   * @returns Promise<TargetData> - Описание возвращаемого значения
+   * @throws Error - Когда выбрасывается ошибка
+   */
+  ```
+
+#### 4.3 Именование
+- camelCase для переменных и функций
+- PascalCase для интерфейсов и типов
+- Понятные имена: `userData`, `transformData`, `parseCSV`
+
+### 5. ФОРМАТ ВЫВОДА (КРИТИЧНО)
+
+- Верни ТОЛЬКО TypeScript код в markdown блоке
+- Формат: ```typescript ... ```
+- БЕЗ объяснений, БЕЗ текста до или после кода
+- Код должен быть ГОТОВ К ПРОДАКШЕНУ
+
+### 6. ПРИМЕР СТРУКТУРЫ ОТВЕТА:
+
 ```typescript
 // Интерфейсы для типизации
 export interface TargetData {{
   // поля из JSON схемы
 }}
 
+export interface Metadata {{
+  sourceType: string;
+  rowCount: number;
+  processedAt: string;
+}}
+
 /**
  * Парсит входные данные и преобразует в формат JSON
  * @param input - содержимое файла в виде строки
- * @returns Promise с преобразованными данными
+ * @returns Promise<TargetData> с преобразованными данными
+ * @throws Error при неверном формате или отсутствии обязательных полей
  */
 export async function transformData(input: string): Promise<TargetData> {{
-  // реализация
+  try {{
+    // 1. Проверка пустого ввода
+    if (!input || input.trim() === '') {{
+      throw new Error('Пустой файл: входные данные не содержат строк');
+    }}
+
+    // 2. Парсинг входных данных
+    const lines = input.trim().split('\\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    
+    // 3. Преобразование в целевую схему
+    const result: TargetData = {{
+      data: [],
+      metadata: {{
+        sourceType: '{file_type}',
+        rowCount: lines.length - 1,
+        processedAt: new Date().toISOString(),
+      }},
+    }};
+    
+    // 4. Обработка каждой строки
+    for (let i = 1; i < lines.length; i++) {{
+      const values = lines[i].split(',').map(v => v.trim());
+      // ... преобразование
+    }}
+    
+    return result;
+  }} catch (error) {{
+    if (error instanceof Error) {{
+      throw new Error(`Ошибка трансформации: ${{error.message}}`);
+    }}
+    throw new Error('Неизвестная ошибка при трансформации');
+  }}
 }}
-```"""
+
+// Вспомогательные функции
+function parseNumber(value: string, fieldName: string): number {{
+  const num = Number(value);
+  if (isNaN(num)) {{
+    throw new Error(`Неверный тип поля ${{fieldName}}: ожидался number, получен "${{value}}"`);
+  }}
+  return num;
+}}
+```
+"""
 
     def __init__(self, llm_config: Optional[Dict[str, Any]] = None):
         self.llm_config = llm_config or {}
-        self.gigachat = self._init_gigachat()
+        self.provider = self.llm_config.get("provider", "auto")
+        self.gigachat = None
+        self.openrouter = None
+        self.cache_manager = get_cache_manager() if CACHE_ENABLED else None
+        self._init_llm()
 
-    def _init_gigachat(self):
-        """Инициализация GigaChat."""
-        credentials = self.llm_config.get("credentials", "")
+    def _init_llm(self):
+        """Инициализация LLM провайдера."""
+        if self.provider == "gigachat" or self.provider == "auto":
+            credentials = self.llm_config.get("credentials", "")
+            if credentials:
+                try:
+                    self.gigachat = GigaChatAuth(credentials)
+                    self.provider = "gigachat"
+                    return
+                except Exception as e:
+                    print(f"Warning: Failed to init GigaChat: {e}")
 
-        if not credentials:
-            print("Warning: No credentials, using mock mode")
-            return None
+        if self.provider == "openrouter" or self.provider == "auto":
+            api_key = self.llm_config.get("api_key", "")
+            if api_key:
+                try:
+                    self.openrouter = OpenRouterAuth(api_key)
+                    self.provider = "openrouter"
+                    return
+                except Exception as e:
+                    print(f"Warning: Failed to init OpenRouter: {e}")
 
-        try:
-            return GigaChatAuth(credentials)
-        except Exception as e:
-            print(f"Warning: Failed to init GigaChat: {e}")
-            return None
+        print("Warning: No LLM credentials, using mock mode")
+        self.provider = "mock"
+
+    def _generate_cache_key(self, file_data: Dict[str, Any], target_json: str) -> str:
+        """Генерация ключа кэша на основе входных данных."""
+        cache_data = {
+            "file_type": file_data.get("type", "unknown"),
+            "structure": file_data.get("structure", {}),
+            "content_preview": file_data.get("content", "")[:1000],
+            "target_json": target_json,
+        }
+        cache_string = json.dumps(cache_data, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(cache_string.encode()).hexdigest()
 
     def generate(self, file_data: Dict[str, Any], target_json: str) -> str:
         """Генерация TypeScript кода."""
-        if not self.gigachat:
-            return self._mock_generate(file_data, target_json)
+        # Проверка кэша
+        if self.cache_manager:
+            cache_key = self._generate_cache_key(file_data, target_json)
+            cached_result = self.cache_manager.get(cache_key)
+            if cached_result:
+                print(f"[CACHE HIT] Возвращаем результат из кэша")
+                return cached_result
+            print(f"[CACHE MISS] Генерируем новый результат")
+
+        if self.provider == "mock" or (not self.gigachat and not self.openrouter):
+            result = self._mock_generate(file_data, target_json)
+            # Сохранение в кэш даже mock результатов
+            if self.cache_manager:
+                cache_key = self._generate_cache_key(file_data, target_json)
+                self.cache_manager.set(cache_key, result)
+            return result
 
         try:
             target_dict = json.loads(target_json)
@@ -322,8 +571,22 @@ export async function transformData(input: string): Promise<TargetData> {{
             },
         ]
 
-        result = self.gigachat.chat(messages)
-        return self._clean_code(result)
+        # Используем доступный LLM
+        if self.openrouter:
+            result = self.openrouter.chat(messages)
+        elif self.gigachat:
+            result = self.gigachat.chat(messages)
+        else:
+            result = self._mock_generate(file_data, target_json)
+
+        result = self._clean_code(result)
+
+        # Сохранение в кэш
+        if self.cache_manager:
+            cache_key = self._generate_cache_key(file_data, target_json)
+            self.cache_manager.set(cache_key, result)
+
+        return result
 
     def _mock_generate(self, file_data: Dict[str, Any], target_json: str) -> str:
         """Генерация mock кода."""

@@ -1,31 +1,50 @@
 import React, { useState, useEffect } from 'react'
-import { Sparkles, Zap, Award, Copy, Check, Download, Code2, FileText, AlertCircle, Loader, CheckCircle, ShieldCheck, TestTube, ChevronRight, Layers, Brain, FileCode, ArrowRight } from 'lucide-react'
+import { Zap, Award, Copy, Check, Download, Code2, FileText, AlertCircle, Loader, CheckCircle, ShieldCheck, TestTube, Brain, FileCode, BarChart3, Send } from 'lucide-react'
 import FileUpload from './FileUpload'
 import JsonInput from './JsonInput'
 import { CodeDisplay, EmptyState } from './CodeDisplay'
 import { generateCode, checkHealth, validateCode, generateTests, fullPipeline } from './api'
+import ProviderToggle from './ProviderToggle'
 
-function StatusBadge({ connected }) {
+function StatusBadge({ connected, provider }) {
+  const providerColors = {
+    gigachat: 'bg-emerald-500/20 text-emerald-700 border-emerald-500/30 shadow-emerald-500/20',
+    openrouter: 'bg-indigo-500/20 text-indigo-700 border-indigo-500/30 shadow-indigo-500/20',
+    mock: 'bg-amber-500/20 text-amber-700 border-amber-500/30 shadow-amber-500/20',
+  }
+
+  const dotColors = {
+    gigachat: 'bg-emerald-500',
+    openrouter: 'bg-indigo-500',
+    mock: 'bg-amber-500',
+  }
+
+  const colorClass = connected ? providerColors[provider] || providerColors.mock : 'bg-red-500/20 text-red-700 border-red-500/30 shadow-red-500/20'
+  const dotColorClass = connected ? dotColors[provider] || dotColors.mock : 'bg-red-500'
+
   return (
-    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-      connected
-        ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 shadow-lg shadow-emerald-500/20'
-        : 'bg-red-500/20 text-red-700 border border-red-500/30 shadow-lg shadow-red-500/20'
-    }`}>
-      <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-      {connected ? 'API Активен' : 'API Оффлайн'}
+    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 border shadow-lg ${colorClass}`}>
+      <div className={`w-2 h-2 rounded-full ${dotColorClass} ${connected ? 'animate-pulse' : ''}`} />
+      {connected ? `AI: ${provider === 'gigachat' ? 'GigaChat' : provider === 'openrouter' ? 'OpenRouter' : 'Auto'}` : 'API Оффлайн'}
     </div>
   )
 }
 
-function FeatureCard({ icon: Icon, title, description, gradient }) {
+function CacheStats({ stats }) {
+  if (!stats || !stats.enabled) return null
+
   return (
-    <div className="card-glass p-6 text-center hover:scale-105 group">
-      <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300`}>
-        <Icon className="w-8 h-8 text-white" />
+    <div className="flex items-center gap-4 px-4 py-2 bg-white/80 backdrop-blur-lg rounded-2xl border border-slate-200/50 text-xs">
+      <div className="flex items-center gap-1 text-emerald-600">
+        <BarChart3 className="w-4 h-4" />
+        <span className="font-semibold">Cache: {stats.hit_rate}%</span>
       </div>
-      <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-      <p className="text-sm text-white/80 leading-relaxed">{description}</p>
+      <div className="text-slate-500">
+        {stats.hits} hits / {stats.misses} misses
+      </div>
+      <div className="text-slate-400">
+        {stats.total_size_mb} MB
+      </div>
     </div>
   )
 }
@@ -38,9 +57,13 @@ export default function App() {
   const [error, setError] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [apiConnected, setApiConnected] = useState(false)
+  const [apiProvider, setApiProvider] = useState('auto')
+  const [selectedProvider, setSelectedProvider] = useState('auto')
   const [validation, setValidation] = useState(null)
   const [generatedTests, setGeneratedTests] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [cacheStats, setCacheStats] = useState(null)
+  const [showValidation, setShowValidation] = useState(false)
 
   useEffect(() => {
     checkApiConnection()
@@ -50,8 +73,10 @@ export default function App() {
 
   const checkApiConnection = async () => {
     try {
-      await checkHealth()
+      const result = await checkHealth()
       setApiConnected(true)
+      setApiProvider(result.llm_provider || 'auto')
+      setCacheStats(result.cache || null)
     } catch (err) {
       setApiConnected(false)
     }
@@ -63,10 +88,11 @@ export default function App() {
     setIsGenerating(true)
     setError(null)
     setValidation(null)
+    setShowValidation(false)
 
     try {
       if (useFullPipeline) {
-        const result = await fullPipeline(selectedFile, targetJson)
+        const result = await fullPipeline(selectedFile, targetJson, selectedProvider)
         setGeneratedCode(result.typescript_code)
         setResultFilename(result.filename.replace(/\.[^/.]+$/, '') + '.ts')
         setValidation(result.validation)
@@ -74,10 +100,12 @@ export default function App() {
           setGeneratedTests(result.tests_code)
         }
       } else {
-        const result = await generateCode(selectedFile, targetJson)
+        const result = await generateCode(selectedFile, targetJson, selectedProvider)
         setGeneratedCode(result.typescript_code)
         setResultFilename(result.filename.replace(/\.[^/.]+$/, '') + '.ts')
       }
+      // Обновить статистику кэша после генерации
+      checkApiConnection()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -89,8 +117,9 @@ export default function App() {
     if (!generatedCode) return
 
     try {
-      const result = await validateCode(generatedCode)
+      const result = await validateCode(generatedCode, targetJson)
       setValidation(result)
+      setShowValidation(true)
     } catch (err) {
       setError(err.message)
     }
@@ -117,63 +146,87 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Animated background orbs */}
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-emerald-50/30 to-slate-100">
+      {/* Animated background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-emerald-500/20 rounded-full blur-3xl float" />
-        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-amber-500/20 rounded-full blur-3xl float" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-purple-500/20 rounded-full blur-3xl float" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-emerald-400/15 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-green-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-1/2 right-1/4 w-[400px] h-[400px] bg-lime-400/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        
+        {/* Grid pattern */}
+        <div className="absolute inset-0 opacity-[0.02]" style={{
+          backgroundImage: 'linear-gradient(#21a038 1px, transparent 1px), linear-gradient(90deg, #21a038 1px, transparent 1px)',
+          backgroundSize: '60px 60px'
+        }} />
       </div>
 
-      {/* Header */}
-      <header className="relative py-16 text-center px-4">
+            {/* Header */}
+      <header className="relative py-8 text-center px-4 slide-in-down">
         {/* Logo */}
-        <div className="flex justify-center mb-8">
+        <div className="flex justify-center mb-4">
           <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-green-500 rounded-3xl blur-2xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 glow" />
-            <div className="relative bg-white/10 backdrop-blur-lg p-6 rounded-3xl border border-white/20 shadow-2xl">
-              <img src="/logo.svg" alt="TS Generator Logo" className="w-32 h-32 drop-shadow-2xl" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#21a038] to-[#2ecc71] rounded-2xl blur-xl opacity-30 group-hover:opacity-50 transition-opacity duration-500" />
+            <div className="relative bg-white p-3 rounded-2xl border-2 border-emerald-500/30 shadow-xl hover:scale-105 transition-transform duration-300">
+              <svg width="64" height="64" viewBox="0 0 100 100" className="drop-shadow-lg">
+                <defs>
+                  <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style={{stopColor:'#21a038',stopOpacity:1}} />
+                    <stop offset="100%" style={{stopColor:'#27ae60',stopOpacity:1}} />
+                  </linearGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="url(#logoGradient)" />
+                <path d="M35 35 L50 35 L55 50 L50 65 L35 65 L30 50 Z" fill="white" opacity="0.9"/>
+                <path d="M50 30 L65 35 L65 65 L50 70 L45 50 Z" fill="white" opacity="0.85"/>
+              </svg>
             </div>
           </div>
         </div>
 
         {/* Title */}
         <div className="mb-6">
-          <h1 className="text-6xl md:text-7xl font-black mb-4">
-            <span className="gradient-text">TypeScript</span>
+          <h1 className="text-5xl md:text-6xl font-black mb-3 tracking-tight">
+            <span className="bg-gradient-to-r from-[#21a038] via-[#2ecc71] to-[#27ae60] bg-clip-text text-transparent">TypeScript</span>
             <br />
-            <span className="text-white drop-shadow-lg">Code Generator</span>
+            <span className="text-slate-800">Code Generator</span>
           </h1>
-          <p className="text-xl text-white/90 max-w-3xl mx-auto leading-relaxed">
-            AI-powered сервис для генерации TypeScript-кода преобразования файлов в JSON
-            <br />
-            <span className="gradient-text-accent font-semibold">с использованием GigaChat</span>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            AI-сервис для генерации TypeScript-кода преобразования файлов в JSON
           </p>
         </div>
 
-        {/* Badges */}
-        <div className="flex items-center justify-center gap-4 mt-8 flex-wrap">
-          <div className="badge">
-            <Award className="w-4 h-4" />
-            Хакатон Сбер 2026
+        {/* Badges & Provider Toggle */}
+        <div className="flex flex-col items-center gap-4 mt-6">
+          <ProviderToggle 
+            provider={selectedProvider} 
+            onToggle={setSelectedProvider}
+            disabled={!apiConnected}
+          />
+          
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/30 text-emerald-700 backdrop-blur-sm hover:scale-105 transition-transform">
+              <Award className="w-4 h-4" />
+              Хакатон Сбер 2026
+            </div>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 text-indigo-700 backdrop-blur-sm hover:scale-105 transition-transform">
+              <Brain className="w-4 h-4" />
+              AI-Powered
+            </div>
+            <StatusBadge connected={apiConnected} provider={apiProvider} />
+            <CacheStats stats={cacheStats} />
           </div>
-          <div className="badge-accent">
-            <Brain className="w-4 h-4" />
-            AI-Powered
-          </div>
-          <StatusBadge connected={apiConnected} />
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content - New Layout */}
       <main className="relative container mx-auto max-w-7xl px-4 pb-20">
-        <div className="grid gap-8 lg:grid-cols-2">
-          {/* Left Column - Input */}
-          <div className="space-y-6">
+        {/* Top Section - Input Controls */}
+        <div className="grid gap-6 lg:grid-cols-2 mb-8">
+          {/* Left Column - File Upload */}
+          <div className="space-y-6 slide-in-left">
             {/* File Upload Card */}
-            <div className="card p-8 fade-in">
+            <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 p-8 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#21a038] to-[#2ecc71] flex items-center justify-center shadow-lg">
                   <FileCode className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -187,8 +240,46 @@ export default function App() {
               />
             </div>
 
-            {/* JSON Input Card */}
-            <div className="card p-8 fade-in" style={{ animationDelay: '0.1s' }}>
+            {/* Error Display */}
+            {error && (
+              <div className="bg-red-50/90 backdrop-blur-xl rounded-3xl shadow-xl border-2 border-red-500/50 p-6 flex items-start gap-4 slide-in-up">
+                <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 shadow-lg scale-in">
+                  <AlertCircle className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-red-700 text-lg">Ошибка генерации</p>
+                  <p className="text-sm text-red-600 mt-1">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {isGenerating && (
+              <div className="bg-emerald-50/90 backdrop-blur-xl rounded-3xl shadow-xl border-2 border-emerald-500/50 p-8 slide-in-up">
+                <div className="flex items-center gap-5">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-emerald-500/30 rounded-full blur-xl animate-pulse" />
+                    <Loader className="w-10 h-10 text-emerald-600 animate-spin relative" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-emerald-700 text-lg">Генерация кода...</p>
+                    <p className="text-sm text-slate-600">
+                      {selectedProvider === 'gigachat' && 'GigaChat создаёт оптимальное решение'}
+                      {selectedProvider === 'openrouter' && 'OpenRouter AI генерирует код'}
+                      {selectedProvider === 'auto' && 'AI создаёт оптимальное решение'}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 h-3 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-emerald-500 via-green-500 to-lime-500 animate-pulse w-full" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column - JSON Input */}
+          <div className="slide-in-right">
+            <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 p-8 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500 h-full">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg">
                   <Code2 className="w-6 h-6 text-white" />
@@ -205,124 +296,68 @@ export default function App() {
                 isGenerating={isGenerating}
               />
             </div>
-
-            {/* Error Display */}
-            {error && (
-              <div className="card p-6 border-2 border-red-500/50 bg-red-50/80 backdrop-blur-sm flex items-start gap-4 fade-in">
-                <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 shadow-lg">
-                  <AlertCircle className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-red-700 text-lg">Ошибка генерации</p>
-                  <p className="text-sm text-red-600 mt-1">{error}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Loading State */}
-            {isGenerating && (
-              <div className="card p-8 border-2 border-emerald-500/50 bg-emerald-50/80 backdrop-blur-sm fade-in">
-                <div className="flex items-center gap-5">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-emerald-500/30 rounded-full blur-xl animate-pulse" />
-                    <Loader className="w-10 h-10 text-emerald-600 animate-spin relative" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-bold text-emerald-700 text-lg">Генерация кода...</p>
-                    <p className="text-sm text-slate-600">GigaChat создаёт оптимальное решение</p>
-                  </div>
-                </div>
-                <div className="mt-6 h-3 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 via-green-500 to-amber-500 animate-pulse w-full" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column - Output */}
-          <div className="fade-in" style={{ animationDelay: '0.2s' }}>
-            {generatedCode ? (
-              <CodeDisplay
-                code={generatedCode}
-                filename={resultFilename}
-                onGenerateTests={handleGenerateTests}
-                onValidate={handleValidate}
-                validation={validation}
-                onCopy={handleCopy}
-                copied={copied}
-              />
-            ) : (
-              <EmptyState />
-            )}
           </div>
         </div>
 
-        {/* Features Grid */}
-        <div className="mt-20">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">Возможности сервиса</h2>
-            <p className="text-lg text-white/80">Всё необходимое для работы с данными</p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <FeatureCard
-              icon={Brain}
-              title="AI-генерация"
-              description="GigaChat создаёт оптимальный TypeScript код для вашего формата данных"
-              gradient="from-emerald-500 to-green-600"
+        {/* Bottom Section - Output */}
+        <div className="slide-in-up" style={{ animationDelay: '200ms' }}>
+          {generatedCode ? (
+            <CodeDisplay
+              code={generatedCode}
+              filename={resultFilename}
+              onGenerateTests={handleGenerateTests}
+              onValidate={handleValidate}
+              validation={validation}
+              showValidation={showValidation}
+              onCopy={handleCopy}
+              copied={copied}
             />
-            <FeatureCard
-              icon={Layers}
-              title="Все форматы"
-              description="CSV, Excel, PDF, DOCX, PNG, JPG — поддержка всех популярных форматов"
-              gradient="from-amber-500 to-yellow-600"
-            />
-            <FeatureCard
-              icon={ShieldCheck}
-              title="Валидация"
-              description="Автоматическая проверка кода на ошибки и best practices"
-              gradient="from-purple-500 to-violet-600"
-            />
-            <FeatureCard
-              icon={TestTube}
-              title="Unit-тесты"
-              description="Автогенерация тестов для transformData функции"
-              gradient="from-pink-500 to-rose-600"
-            />
-          </div>
-        </div>
-
-        {/* CTA Section */}
-        <div className="mt-20 text-center">
-          <div className="card-glass p-12 max-w-4xl mx-auto">
-            <h2 className="text-3xl font-bold text-white mb-4">Готовы начать?</h2>
-            <p className="text-lg text-white/80 mb-8 max-w-2xl mx-auto">
-              Загрузите файл, опишите целевую схему и получите готовый TypeScript код за секунды
-            </p>
-            <div className="flex items-center justify-center gap-4">
-              <div className="flex items-center gap-2 text-white/70">
-                <CheckCircle className="w-5 h-5 text-emerald-400" />
-                <span>Бесплатно</span>
-              </div>
-              <div className="flex items-center gap-2 text-white/70">
-                <CheckCircle className="w-5 h-5 text-emerald-400" />
-                <span>Быстро</span>
-              </div>
-              <div className="flex items-center gap-2 text-white/70">
-                <CheckCircle className="w-5 h-5 text-emerald-400" />
-                <span>Безопасно</span>
-              </div>
-            </div>
-          </div>
+          ) : (
+            <EmptyState />
+          )}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="relative border-t border-white/10 py-8 text-center">
+      <footer className="relative border-t border-slate-200/50 py-8 bg-white/50 backdrop-blur-xl">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-center gap-2 text-white/60 text-sm">
-            <Sparkles className="w-4 h-4" />
-            <span>Хакатон Сбер 2026 • TypeScript Code Generator • GigaChat Powered</span>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 text-slate-700 text-sm">
+              <div className="flex items-center gap-2">
+                <svg width="24" height="24" viewBox="0 0 100 100" className="drop-shadow">
+                  <defs>
+                    <linearGradient id="footerLogoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style={{stopColor:'#21a038',stopOpacity:1}} />
+                      <stop offset="100%" style={{stopColor:'#27ae60',stopOpacity:1}} />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="45" fill="url(#footerLogoGradient)" />
+                  <path d="M35 35 L50 35 L55 50 L50 65 L35 65 L30 50 Z" fill="white" opacity="0.9"/>
+                  <path d="M50 30 L65 35 L65 65 L50 70 L45 50 Z" fill="white" opacity="0.85"/>
+                </svg>
+                <span className="font-bold">Хакатон Сбер 2026</span>
+              </div>
+              <span className="text-slate-400">•</span>
+              <span>TypeScript Code Generator</span>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <a 
+                href="https://t.me/m3rcin" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-blue-600/10 border border-blue-500/30 text-blue-600 hover:bg-blue-500/20 hover:scale-105 transition-all duration-300 font-medium text-sm"
+                title="Telegram автора"
+              >
+                <Send className="w-4 h-4" />
+              </a>
+            </div>
+
+            <div className="text-slate-500 text-sm">
+              © 2026 TypeScript Generator. All rights reserved.
+            </div>
           </div>
+
         </div>
       </footer>
     </div>
