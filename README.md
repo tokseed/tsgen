@@ -92,33 +92,44 @@ npm install
 
 ## ▶️ Запуск
 
-### Вариант 1: Раздельный запуск (рекомендуется для разработки)
+### Быстрый запуск (Windows)
+
+**Один скрипт для всего:**
+```bash
+start.bat
+```
+
+Это создаст виртуальное окружение, установит зависимости и запустит оба сервера.
+
+### Раздельный запуск
 
 **Терминал 1 — Бэкенд:**
 ```bash
-cd tsgen
-python src/main.py
+run_backend.bat
 ```
 Бэкенд запустится на `http://localhost:8000`
 
 **Терминал 2 — Фронтенд:**
 ```bash
-cd tsgen/frontend
-npm run dev
+run_frontend.bat
 ```
 Фронтенд запустится на `http://localhost:5173`
 
-### Вариант 2: Использование batch-файлов (Windows)
+### Ручной запуск
 
+**Бэкенд:**
 ```bash
-# Запуск бэкенда
-run_backend.bat
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+python src\main.py
+```
 
-# Запуск фронтенда (в новом окне)
-run_frontend.bat
-
-# Или запуск всего сразу
-start.bat
+**Фронтенд:**
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
 ## 📡 API Endpoints
