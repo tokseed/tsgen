@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
+  min-height: 100vh;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-sber-green to-sber-light text-white font-semibold px-6 py-3 rounded-xl 
+           shadow-lg shadow-sber-green/30 hover:shadow-xl hover:shadow-sber-green/40 
+           hover:-translate-y-0.5 transition-all duration-200 active:translate-y-0;
+  }
+
+  .btn-secondary {
+    @apply bg-gradient-to-r from-accent-yellow to-accent-light text-slate-900 font-medium px-6 py-3 rounded-xl
+           shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-lg border border-slate-100;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-sber-green focus:ring-4 
+           focus:ring-sber-green/10 outline-none transition-all duration-200 font-mono text-sm bg-white;
+  }
+
+  .dropzone {
+    @apply border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center cursor-pointer
+           hover:border-sber-green hover:bg-sber-green/5 transition-all duration-200;
+  }
+
+  .dropzone-active {
+    @apply border-sber-green bg-sber-green/10 scale-[1.02];
+  }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.code-block {
+  background: linear-gradient(135deg, #1e1e1e 0%, #252526 100%);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  position: relative;
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Text selection */
+::selection {
+  background-color: rgba(33, 160, 56, 0.2);
+  color: #1b5e20;
+}
