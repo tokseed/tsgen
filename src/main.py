@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from converter import generate_typescript
 from validator import validate_typescript
 from test_generator import generate_tests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(
     title="TypeScript Code Generator API",
@@ -32,15 +35,10 @@ app.add_middleware(
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "ts_generator_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-GIGACHAT_KEY = "MDE5ZDBkYWItMGQ2YS03MjgyLWJkOTAtNjFmZGY1ZWMwODVkOmYyOTBhOWJmLWNiMGItNDMxNC1iYzFjLWFjZmJlYjM0YWRiZg=="
-
 
 def get_llm_config():
     """Получение конфигурации LLM."""
     credentials = os.getenv("GIGACHAT_CREDENTIALS", "")
-
-    if not credentials:
-        credentials = GIGACHAT_KEY if GIGACHAT_KEY else ""
 
     if credentials:
         try:
