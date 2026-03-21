@@ -23,7 +23,43 @@ AI-powered сервис для генерации TypeScript-кода преоб
 - Node.js 18 или выше
 - npm или yarn
 
-## 🔧 Установка
+## 🌐 Деплой в сеть
+
+### Автоматический деплой (CI/CD)
+
+Проект настроен для автоматического деплоя через GitHub Actions:
+
+**Фронтенд → GitHub Pages:**
+1. Зайдите в Settings → Pages → Build and Deployment
+2. В source выберите "GitHub Actions"
+3. При пуше в main фронтенд автоматически соберётся и задеплоится
+
+**Бэкенд → Render:**
+1. Зарегистрируйтесь на https://render.com
+2. Создайте новый Web Service
+3. Подключите GitHub репозиторий
+4. Используйте настройки из `render.yaml`:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `uvicorn src.main:app --host 0.0.0.0 --port $PORT`
+5. Добавьте переменную окружения `GIGACHAT_CREDENTIALS`
+
+### Ручной деплой
+
+**Фронтенд:**
+```bash
+cd frontend
+npm run build
+# Загрузите dist/ на любой хостинг
+```
+
+**Бэкенд:**
+```bash
+# На любом VPS или облаке
+pip install -r requirements.txt
+uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+## 🔧 Установка (локальная разработка)
 
 ### 1. Клонирование репозитория
 
