@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Upload, FileText, CheckCircle, X, Image, File, Table, FileCheck } from 'lucide-react'
+import { Upload, FileText, CheckCircle, X, Image, File, Table, FileCheck, CloudUpload } from 'lucide-react'
 
 const SUPPORTED_FORMATS = ['.csv', '.xls', '.xlsx', '.pdf', '.docx', '.png', '.jpg', '.jpeg']
 
@@ -15,14 +15,14 @@ const formatIcons = {
 }
 
 const formatColors = {
-  csv: 'text-green-600 bg-green-600/10',
-  xls: 'text-blue-600 bg-blue-600/10',
-  xlsx: 'text-blue-600 bg-blue-600/10',
-  pdf: 'text-red-600 bg-red-600/10',
-  docx: 'text-blue-600 bg-blue-600/10',
-  png: 'text-purple-600 bg-purple-600/10',
-  jpg: 'text-purple-600 bg-purple-600/10',
-  jpeg: 'text-purple-600 bg-purple-600/10',
+  csv: 'from-emerald-500 to-green-600',
+  xls: 'from-blue-500 to-cyan-600',
+  xlsx: 'from-blue-500 to-cyan-600',
+  pdf: 'from-red-500 to-rose-600',
+  docx: 'from-blue-500 to-indigo-600',
+  png: 'from-purple-500 to-violet-600',
+  jpg: 'from-purple-500 to-violet-600',
+  jpeg: 'from-purple-500 to-violet-600',
 }
 
 export default function FileUpload({ onFileSelect, selectedFile }) {
@@ -104,56 +104,76 @@ export default function FileUpload({ onFileSelect, selectedFile }) {
         onClick={() => document.getElementById('file-input').click()}
       >
         {selectedFile ? (
-          <div className={`dropzone border-sber-green bg-sber-green/5 relative`}>
-            <div className="flex flex-col items-center gap-4">
+          <div className="dropzone border-emerald-500 bg-emerald-50/50 backdrop-blur-sm relative overflow-hidden">
+            {/* Animated background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-green-500/5" />
+            
+            <div className="relative flex flex-col items-center gap-4">
+              {/* Icon with glow effect */}
               <div className="relative">
-                <div className="absolute inset-0 bg-sber-green/20 rounded-full blur-lg" />
-                <div className="relative p-5 rounded-full bg-sber-green/10">
-                  <FileCheck className="w-16 h-16 text-sber-green" />
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full blur-xl opacity-50 animate-pulse" />
+                <div className="relative p-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-600/20 backdrop-blur-sm border-2 border-emerald-500/30">
+                  <FileCheck className="w-16 h-16 text-emerald-600" />
                 </div>
               </div>
-              
+
+              {/* File info */}
               <div className="text-center">
-                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${formatColors[getFileExtension(selectedFile.name)] || 'text-slate-600 bg-slate-100'}`}>
+                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-gradient-to-r ${formatColors[getFileExtension(selectedFile.name)] || 'from-slate-500 to-slate-600'} text-white shadow-lg`}>
                   {React.createElement(getIcon(getFileExtension(selectedFile.name)), { className: 'w-4 h-4' })}
                   {getFileExtension(selectedFile.name).toUpperCase()}
                 </div>
-                <p className="mt-3 font-semibold text-slate-800 text-lg">{selectedFile.name}</p>
-                <p className="text-sm text-slate-500">{formatFileSize(selectedFile.size)}</p>
+                <p className="mt-4 font-bold text-slate-800 text-lg">{selectedFile.name}</p>
+                <p className="text-sm text-slate-500 mt-1">{formatFileSize(selectedFile.size)}</p>
               </div>
 
+              {/* Clear button */}
               <button
                 type="button"
                 onClick={handleClear}
-                className="absolute right-4 top-4 p-2 rounded-xl bg-slate-100 hover:bg-red-50 hover:text-red-500 transition-colors"
+                className="absolute right-4 top-4 p-2 rounded-xl bg-white/80 backdrop-blur-sm hover:bg-red-50 hover:text-red-500 transition-all duration-300 shadow-md"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <p className="text-xs text-slate-400">Нажмите, чтобы выбрать другой файл</p>
+              <p className="text-xs text-slate-400 mt-2">Нажмите, чтобы выбрать другой файл</p>
             </div>
           </div>
         ) : (
-          <div className={`dropzone ${isDragging ? 'dropzone-active' : ''} ${error ? 'border-red-500' : ''}`}>
-            <div className="flex flex-col items-center gap-4">
-              <div className={`transition-transform ${error ? '' : 'hover:-translate-y-1'}`}>
-                <Upload className={`w-16 h-16 ${error ? 'text-red-500' : 'text-sber-green'}`} />
+          <div className={`dropzone ${isDragging ? 'dropzone-active border-emerald-500 bg-emerald-50/50' : 'border-slate-300/50 bg-white/50'} ${error ? 'border-red-500 bg-red-50/50' : ''} backdrop-blur-sm`}>
+            <div className="flex flex-col items-center gap-5">
+              {/* Upload icon */}
+              <div className={`transition-all duration-300 ${error ? '' : 'hover:-translate-y-2'} relative`}>
+                {isDragging && (
+                  <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
+                )}
+                <div className={`relative p-6 rounded-full ${error ? 'bg-red-100' : 'bg-gradient-to-br from-emerald-100 to-green-100'} transition-all duration-300`}>
+                  {error ? (
+                    <X className="w-16 h-16 text-red-500" />
+                  ) : (
+                    <CloudUpload className={`w-16 h-16 ${isDragging ? 'text-emerald-600' : 'text-emerald-600'}`} />
+                  )}
+                </div>
               </div>
-              
+
               {error ? (
-                <p className="text-lg font-medium text-red-500">{error}</p>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-red-600">{error}</p>
+                  <p className="text-sm text-slate-500 mt-1">Попробуйте другой файл</p>
+                </div>
               ) : (
                 <>
                   <div className="text-center">
-                    <p className="text-lg font-medium">
-                      <span className="text-sber-green">Перетащите файл</span> сюда
+                    <p className="text-xl font-bold text-slate-700">
+                      <span className="text-emerald-600">Перетащите файл</span> сюда
                     </p>
-                    <p className="text-sm text-slate-500 mt-1">или кликните для выбора</p>
+                    <p className="text-sm text-slate-500 mt-2">или кликните для выбора</p>
                   </div>
-                  
-                  <div className="flex flex-wrap justify-center gap-2 mt-2">
+
+                  {/* Supported formats */}
+                  <div className="flex flex-wrap justify-center gap-2 mt-3">
                     {['CSV', 'Excel', 'PDF', 'DOCX', 'PNG', 'JPG'].map((fmt) => (
-                      <span key={fmt} className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded">
+                      <span key={fmt} className="px-3 py-1.5 text-xs font-medium bg-white/80 backdrop-blur-sm text-slate-600 rounded-lg border border-slate-200/50 hover:border-emerald-300 hover:text-emerald-600 transition-all">
                         {fmt}
                       </span>
                     ))}
