@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Copy, Check, Download, Code2, CopyPlus, RefreshCw, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle, Play, Terminal, Wrench2, Loader2 } from 'lucide-react'
+import { Copy, Check, Download, Code2, CopyPlus, RefreshCw, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle, Play, Terminal, Wrench, Loader2 } from 'lucide-react'
 import Prism from 'prismjs'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/themes/prism-tomorrow.css'
@@ -362,7 +362,7 @@ export function CodeDisplay({
           {isFixing ? (
             <RefreshCw className="w-4 h-4 animate-spin" />
           ) : (
-            <Wrench2 className="w-4 h-4" />
+            <Wrench className="w-4 h-4" />
           )}
           {isFixing ? 'Исправление...' : 'Исправить'}
         </button>
