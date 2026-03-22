@@ -163,6 +163,7 @@ export function CodeDisplay({
   targetJson,
   selectedFile,
   onCodeUpdate,
+  onValidationResult,
   isGenerating,
 }) {
   const [activeTab, setActiveTab] = useState('code')
@@ -204,33 +205,27 @@ export function CodeDisplay({
     if (!code) return
     
     setIsValidating(true)
-    setIsExecuting(true)
     
-    // First, validate in browser
+    // First, validate in browser for instant feedback
     const browserValidation = validateTSInBrowser(code)
     
-    // If browser validation passes, try backend validation
-    if (browserValidation.valid && onValidate) {
-      try {
-        await onValidate()
-        setShowValidationPanel(true)
-      } catch {
-        // Backend failed, but browser validation passed - use browser result
-        setShowValidationPanel(true)
-      }
-    } else {
-      // Use browser validation result
-      if (onValidate) {
-        try {
-          await onValidate()
-        } catch {}
-      }
-      setShowValidationPanel(true)
+    // Notify parent of validation result
+    if (onValidationResult) {
+      onValidationResult(browserValidation)
     }
     
+    // Try backend validation if available
+    if (onValidate) {
+      try {
+        await onValidate()
+      } catch (err) {
+        console.error('Backend validation failed:', err)
+      }
+    }
+    
+    setShowValidationPanel(true)
     setIsValidating(false)
-    setIsExecuting(false)
-  }, [code, onValidate])
+  }, [code, onValidate, onValidationResult])
 
   const handleExecute = useCallback(async () => {
     if (!code) return

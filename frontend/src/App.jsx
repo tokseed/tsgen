@@ -98,17 +98,20 @@ export default function App() {
     try {
       const result = await checkHealth()
       setApiConnected(true)
-      setApiProvider(result.llm_provider || 'auto')
-      setCacheStats(result.cache || null)
+      setApiProvider(result?.llm_provider || 'auto')
+      setCacheStats(result?.cache || null)
       
       // Получаем статистику токенов
       try {
         const tokens = await getTokenStats()
-        setTokenStats(tokens)
+        if (tokens) {
+          setTokenStats(tokens)
+        }
       } catch (e) {
-        console.log('Token stats not available')
+        console.log('Token stats not available:', e.message)
       }
     } catch (err) {
+      console.error('Health check failed:', err)
       setApiConnected(false)
     }
   }
@@ -145,14 +148,16 @@ export default function App() {
   }
 
   const handleValidate = async () => {
-    if (!generatedCode) return
+    if (!generatedCode) return null
 
     try {
       const result = await validateCode(generatedCode, targetJson)
       setValidation(result)
       setShowValidation(true)
+      return result
     } catch (err) {
       setError(err.message)
+      return null
     }
   }
 
@@ -345,6 +350,7 @@ export default function App() {
               targetJson={targetJson}
               selectedFile={selectedFile}
               onCodeUpdate={setGeneratedCode}
+              onValidationResult={setValidation}
               isGenerating={isGenerating}
             />
           ) : (

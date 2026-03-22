@@ -61,20 +61,29 @@ export const generateCode = async (file, targetJson, provider = 'auto') => {
   }
 }
 
-export const validateCode = async (typescriptCode) => {
+export const validateCode = async (typescriptCode, targetJson = null) => {
   const formData = new FormData()
   formData.append('typescript_code', typescriptCode)
-
-  const response = await fetch(`${API_URL}/validate`, {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    throw new Error('Ошибка валидации')
+  if (targetJson) {
+    formData.append('target_json', targetJson)
   }
 
-  return await response.json()
+  try {
+    const response = await fetch(`${API_URL}/validate`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.detail || 'Ошибка валидации')
+    }
+
+    return await response.json()
+  } catch (err) {
+    console.error('Validate error:', err)
+    throw err
+  }
 }
 
 export const generateTests = async (typescriptCode, targetJson, filename) => {
