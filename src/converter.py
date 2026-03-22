@@ -476,7 +476,7 @@ class FileProcessor:
         """Обработка DOCX через python-docx."""
         if not DOCX_AVAILABLE:
             return "DOCX processing requires python-docx", {"error": "python-docx not installed"}
-        
+
         try:
             doc = Document(filepath)
             text = "\n".join([p.text for p in doc.paragraphs[:100]])
@@ -493,15 +493,17 @@ class FileProcessor:
                 "text_length": len(text),
             }
 
-        content = text
-        if tables_data:
-            content += "\n\n=== TABLES ===\n"
-            for i, table in enumerate(tables_data):
-                content += f"\nTable {i + 1}:\n"
-                for row in table:
-                    content += " | ".join(row) + "\n"
+            content = text
+            if tables_data:
+                content += "\n\n=== TABLES ===\n"
+                for i, table in enumerate(tables_data):
+                    content += f"\nTable {i + 1}:\n"
+                    for row in table:
+                        content += " | ".join(row) + "\n"
 
-        return content[:5000], structure
+            return content[:5000], structure
+        except Exception as e:
+            return f"DOCX error: {e}", {"error": str(e)}
 
     @staticmethod
     def _process_image(filepath: str) -> tuple:
