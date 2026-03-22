@@ -10,10 +10,12 @@ from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from converter import generate_typescript
 from validator import validate_typescript
 from test_generator import generate_tests
+from executor import execute_typescript, check_tsx_installed
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -281,6 +283,115 @@ async def full_pipeline(
     finally:
         if temp_path.exists():
             temp_path.unlink()
+
+
+# ============================================================================
+# GENERATE AND EXECUTE ENDPOINTS
+# ============================================================================
+
+class GenerateExecuteRequest(BaseModel):
+    """Запрос на генерацию и выполнение кода."""
+    prompt: str
+    model: str = "meta-llama/llama-3.3-70b-instruct"  # формат OpenRouter
+    file_type: str = "csv"  # тип файла для контекста
+
+
+@app.post("/api/generate-and-execute")
+async def generate_and_execute(req: GenerateExecuteRequest):
+    """
+    Генерация TypeScript кода по промпту и его выполнение.
+    
+    Возвращает сгенерированный код и результат выполнения.
+    """
+    from pydantic import ValidationError
+    
+    try:
+        # 1. Формируем целевую JSON схему из промпта
+        target_json = req.prompt
+        
+        # 2. Создаём временный файл-заглушку для генерации
+        with tempfile.NamedTemporaryFile(
+            mode='w', 
+            suffix=f'.{req.file_type}', 
+            delete=False,
+            encoding='utf-8'
+        ) as f:
+            # Пример данных для контекста
+            if req.file_type == 'csv':
+                f.write("id,name,value\n1,test,100\n2,demo,200")
+            else:
+                f.write("sample data")
+            temp_filepath = f.name
+        
+        try:
+            llm_config = get_llm_config("openrouter")
+            
+            # 1. Генерируем код
+            typescript_code = generate_typescript(
+                filepath=temp_filepath,
+                target_json=target_json,
+                llm_config=llm_config,
+            )
+            
+            # 2. Выполняем код
+            execution_result = execute_typescript(typescript_code, timeout=10)
+            
+            # 3. Возвращаем всё вместе
+            return JSONResponse(content={
+                "success": True,
+                "generated_code": typescript_code,
+                "execution": execution_result,
+                "model_used": req.model,
+            })
+            
+        finally:
+            # Удаляем временный файл
+            if os.path.exists(temp_filepath):
+                os.unlink(temp_filepath)
+                
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/execute-only")
+async def execute_only(
+    typescript_code: str = Form(...),
+    timeout: int = Form(5),
+):
+    """
+    Выполнение готового TypeScript кода без генерации.
+    """
+    try:
+        execution_result = execute_typescript(typescript_code, timeout=timeout)
+        
+        return JSONResponse(content={
+            "success": execution_result.get("success", False),
+            "execution": execution_result,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/executor/check")
+async def executor_check():
+    """
+    Проверка доступности исполнителя TypeScript (tsx/node).
+    """
+    try:
+        check_result = check_tsx_installed()
+        
+        return JSONResponse(content={
+            "success": True,
+            "tsx_installed": check_result["tsx_installed"],
+            "node_installed": check_result["node_installed"],
+            "tsx_version": check_result["tsx_version"],
+            "node_version": check_result["node_version"],
+            "installation_command": "npm install -g tsx typescript @types/node",
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

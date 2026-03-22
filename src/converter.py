@@ -129,10 +129,10 @@ class GigaChatAuth:
 
 
 class OpenRouterAuth:
-    """OpenRouter API клиент."""
+    """OpenRouter API клиент с интеграцией LangFuse."""
 
     BASE_URL = "https://openrouter.ai/api/v1"
-    
+
     # Рекомендуемые модели для генерации кода
     MODELS = {
         "best": "anthropic/claude-3.5-sonnet",
@@ -144,73 +144,163 @@ class OpenRouterAuth:
     def __init__(self, api_key: str, model_preset: str = "balanced"):
         self.api_key = api_key
         self.model = self.MODELS.get(model_preset, self.MODELS["balanced"])
+        
+        # LangFuse интеграция
+        self.langfuse = None
+        self._init_langfuse()
+    
+    def _init_langfuse(self):
+        """Инициализация LangFuse для трекинга."""
+        try:
+            from langfuse import Langfuse
+            from langfuse.openai import openai as langfuse_openai
+            
+            langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+            langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+            langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+            
+            if langfuse_public_key and langfuse_secret_key:
+                self.langfuse = Langfuse(
+                    public_key=langfuse_public_key,
+                    secret_key=langfuse_secret_key,
+                    host=langfuse_host,
+                )
+                print("[LangFuse] Инициализирован успешно")
+        except ImportError:
+            print("[LangFuse] Не установлен: pip install langfuse")
+        except Exception as e:
+            print(f"[LangFuse] Ошибка инициализации: {e}")
 
     def chat(self, messages: list, model: str = None) -> str:
-        """Отправка запроса к OpenRouter."""
+        """Отправка запроса к OpenRouter с трекингом LangFuse."""
         model_to_use = model or self.model
         
+        # Создаём trace в LangFuse
+        trace = None
+        span = None
+        generation = None
+        
+        if self.langfuse:
+            try:
+                trace = self.langfuse.trace(
+                    name="openrouter-chat",
+                    input={"messages": messages, "model": model_to_use},
+                    metadata={
+                        "provider": "openrouter",
+                        "model": model_to_use,
+                        "base_url": self.BASE_URL,
+                    }
+                )
+                span = trace.span(name="openrouter-api-call")
+            except Exception as e:
+                print(f"[LangFuse] Ошибка создания trace: {e}")
+
         max_retries = 3
         retry_delay = 2
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(
-                    f"{self.BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://github.com/tsgen",
-                        "X-Title": "TS Generator",
-                    },
-                    json={
-                        "model": model_to_use,
-                        "messages": messages,
-                        "temperature": 0.3,
-                        "max_tokens": 4000,
-                        "top_p": 0.95,
-                        "frequency_penalty": 0.1,
-                        "presence_penalty": 0.1,
-                    },
-                    timeout=120,
-                )
-                
-                # Обработка ошибок API
-                if response.status_code == 429:
-                    raise ValueError("Rate limit превышен. Подождите немного.")
-                elif response.status_code == 401:
-                    raise ValueError("Неверный API ключ OpenRouter.")
-                elif response.status_code == 402:
-                    raise ValueError("Недостаточно кредитов на счету OpenRouter.")
-                
-                response.raise_for_status()
 
-                result = response.json()
-                
-                # Проверка на ошибки в ответе
-                if "error" in result:
-                    error_msg = result["error"].get("message", "Неизвестная ошибка API")
-                    raise ValueError(f"Ошибка OpenRouter API: {error_msg}")
-                
-                if "choices" not in result or len(result["choices"]) == 0:
-                    raise ValueError("Пустой ответ от OpenRouter")
+        try:
+            for attempt in range(max_retries):
+                try:
+                    start_time = time.time()
+                    
+                    response = requests.post(
+                        f"{self.BASE_URL}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": os.getenv("APP_URL", "https://github.com/tsgen"),
+                            "X-Title": "TS Generator",
+                        },
+                        json={
+                            "model": model_to_use,
+                            "messages": messages,
+                            "temperature": 0.3,
+                            "max_tokens": 4000,
+                            "top_p": 0.95,
+                            "frequency_penalty": 0.1,
+                            "presence_penalty": 0.1,
+                        },
+                        timeout=120,
+                    )
+                    
+                    elapsed_time = time.time() - start_time
 
-                content = result["choices"][0]["message"]["content"]
-                
-                if not content or content.strip() == "":
-                    raise ValueError("Пустое содержимое ответа")
-                
-                return content
-                
-            except requests.exceptions.Timeout:
-                if attempt == max_retries - 1:
-                    raise ValueError("Таймаут соединения с OpenRouter. Попробуйте позже.")
-                time.sleep(retry_delay * (attempt + 1))
-            except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
-                    raise ValueError(f"Ошибка соединения: {str(e)}")
-                time.sleep(retry_delay)
-        
-        raise ValueError("Не удалось выполнить запрос после нескольких попыток")
+                    # Обработка ошибок API
+                    if response.status_code == 429:
+                        raise ValueError("Rate limit превышен. Подождите немного.")
+                    elif response.status_code == 401:
+                        raise ValueError("Неверный API ключ OpenRouter.")
+                    elif response.status_code == 402:
+                        raise ValueError("Недостаточно кредитов на счету OpenRouter.")
+
+                    response.raise_for_status()
+
+                    result = response.json()
+
+                    # Проверка на ошибки в ответе
+                    if "error" in result:
+                        error_msg = result["error"].get("message", "Неизвестная ошибка API")
+                        raise ValueError(f"Ошибка OpenRouter API: {error_msg}")
+
+                    if "choices" not in result or len(result["choices"]) == 0:
+                        raise ValueError("Пустой ответ от OpenRouter")
+
+                    content = result["choices"][0]["message"]["content"]
+                    
+                    # Получение метрик использования токенов
+                    usage = result.get("usage", {})
+                    prompt_tokens = usage.get("prompt_tokens", 0)
+                    completion_tokens = usage.get("completion_tokens", 0)
+                    total_tokens = usage.get("total_tokens", 0)
+
+                    if not content or content.strip() == "":
+                        raise ValueError("Пустое содержимое ответа")
+                    
+                    # Обновление LangFuse с метриками
+                    if self.langfuse and trace:
+                        try:
+                            trace.update(
+                                output={"content": content[:500] if content else None},
+                                usage={
+                                    "promptTokens": prompt_tokens,
+                                    "completionTokens": completion_tokens,
+                                    "totalTokens": total_tokens,
+                                },
+                                duration=elapsed_time,
+                            )
+                            if span:
+                                span.end()
+                            self.langfuse.flush()
+                        except Exception as e:
+                            print(f"[LangFuse] Ошибка обновления trace: {e}")
+
+                    return content
+
+                except requests.exceptions.Timeout:
+                    if attempt == max_retries - 1:
+                        raise ValueError("Таймаут соединения с OpenRouter. Попробуйте позже.")
+                    time.sleep(retry_delay * (attempt + 1))
+                except requests.exceptions.RequestException as e:
+                    if attempt == max_retries - 1:
+                        raise ValueError(f"Ошибка соединения: {str(e)}")
+                    time.sleep(retry_delay)
+
+            raise ValueError("Не удалось выполнить запрос после нескольких попыток")
+            
+        except Exception as e:
+            # Логирование ошибки в LangFuse
+            if self.langfuse and trace:
+                try:
+                    trace.update(
+                        output={"error": str(e)},
+                        level="ERROR",
+                    )
+                    if span:
+                        span.end()
+                    self.langfuse.flush()
+                except Exception as log_error:
+                    print(f"[LangFuse] Ошибка логирования ошибки: {log_error}")
+            raise
 
     def check_connection(self) -> dict:
         """Проверка подключения к API."""
