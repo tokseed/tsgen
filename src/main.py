@@ -432,10 +432,34 @@ async def execute_only(
     """
     try:
         execution_result = execute_typescript(typescript_code, timeout=timeout)
-        
+
         return JSONResponse(content={
             "success": execution_result.get("success", False),
             "execution": execution_result,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/run-tests")
+async def run_tests(
+    typescript_code: str = Form(...),
+    test_code: str = Form(...),
+    timeout: int = Form(10),
+):
+    """
+    Выполнение TypeScript кода с тестами в изолированной среде.
+    Объединяет код с тестами и запускает через tsx.
+    """
+    try:
+        # Объединяем код с тестами
+        combined_code = f"{typescript_code}\n\n// Tests\n{test_code}"
+        execution_result = execute_typescript(combined_code, timeout=timeout)
+
+        return JSONResponse(content={
+            "success": execution_result.get("success", False),
+            "execution": execution_result,
+            "test_results": execution_result.get("data", {}),
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -448,7 +472,7 @@ async def executor_check():
     """
     try:
         check_result = check_tsx_installed()
-        
+
         return JSONResponse(content={
             "success": True,
             "tsx_installed": check_result["tsx_installed"],

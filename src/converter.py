@@ -839,6 +839,12 @@ export {{ transformData }};
     @staticmethod
     def _generate_interface(data: Dict, name: str, indent: int = 0) -> str:
         """Генерация TypeScript интерфейса."""
+        # Если data — список, берём первый элемент
+        if isinstance(data, list):
+            if not data:
+                return f"interface {name} {{ [key: string]: any; }}"
+            data = data[0] if isinstance(data[0], dict) else {"value": type(data[0]).__name__}
+        
         prefix = "  " * indent
         lines = [f"{prefix}interface {name} {{"]
 

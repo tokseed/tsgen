@@ -56,13 +56,16 @@ function TokenStats({ stats }) {
     <div className="flex items-center gap-4 px-4 py-2 bg-white/80 backdrop-blur-lg rounded-2xl border border-slate-200/50 text-xs">
       <div className="flex items-center gap-1 text-purple-600">
         <Zap className="w-4 h-4" />
-        <span className="font-semibold">Tokens: {(stats.total_tokens / 1000).toFixed(1)}K</span>
+        <span className="font-semibold">Tokens: {(stats.total_tokens || 0).toLocaleString()}</span>
       </div>
       <div className="text-slate-500">
-        {stats.total_requests} req
+        {stats.total_requests || 0} req
       </div>
-      <div className="text-slate-400">
-        Avg: {stats.average_tokens_per_request}
+      <div className="text-slate-400" title="Prompt tokens">
+        P: {(stats.total_prompt_tokens || 0).toLocaleString()}
+      </div>
+      <div className="text-slate-400" title="Completion tokens">
+        C: {(stats.total_completion_tokens || 0).toLocaleString()}
       </div>
     </div>
   )

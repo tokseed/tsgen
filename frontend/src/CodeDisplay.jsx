@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle } from 'lucide-react'
+import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle, Play, Terminal } from 'lucide-react'
 import Prism from 'prismjs'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/themes/prism-tomorrow.css'
+import { runTests, executeCode } from './api'
 
 export function CodeDisplay({ code, filename, onGenerateTests, onValidate, validation, showValidation = false, onCopy, copied }) {
   const [downloaded, setDownloaded] = useState(false)
@@ -11,6 +12,10 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
   const [isGeneratingTests, setIsGeneratingTests] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
   const [showValidationPanel, setShowValidationPanel] = useState(showValidation)
+  const [isRunningTests, setIsRunningTests] = useState(false)
+  const [testResults, setTestResults] = useState(null)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [executionResult, setExecutionResult] = useState(null)
 
   useEffect(() => {
     Prism.highlightAll()
@@ -71,6 +76,38 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
     }
   }
 
+  const handleRunTests = async () => {
+    if (!testsCode || !code) return
+    setIsRunningTests(true)
+    setTestResults(null)
+    try {
+      const result = await runTests(code, testsCode, 15)
+      setTestResults(result)
+      setActiveTab('tests')
+    } catch (err) {
+      console.error('Tests failed:', err)
+      setTestResults({ success: false, error: err.message })
+    } finally {
+      setIsRunningTests(false)
+    }
+  }
+
+  const handleExecute = async () => {
+    if (!code) return
+    setIsExecuting(true)
+    setExecutionResult(null)
+    try {
+      const result = await executeCode(code, 10)
+      setExecutionResult(result)
+      setActiveTab('code')
+    } catch (err) {
+      console.error('Execution failed:', err)
+      setExecutionResult({ success: false, error: err.message })
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
   if (!code) return null
 
   const displayCode = activeTab === 'tests' && testsCode ? testsCode : code
@@ -108,6 +145,54 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
           {isGeneratingTests ? 'Генерация...' : 'Тесты'}
         </button>
         <button
+          onClick={handleRunTests}
+          disabled={!testsCode || isRunningTests}
+          className={`px-5 py-3 text-sm font-semibold rounded-xl transition-all duration-300 flex items-center gap-2 ${
+            testResults
+              ? testResults.success
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30 scale-105'
+                : 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/30'
+              : 'bg-white/20 backdrop-blur-sm text-white hover:bg-white/30'
+          } ${(!testsCode || isRunningTests) ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isRunningTests ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : testResults ? (
+            testResults.success ? (
+              <CheckCircle className="w-4 h-4" />
+            ) : (
+              <AlertCircle className="w-4 h-4" />
+            )
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+          {isRunningTests ? 'Запуск...' : testResults ? (testResults.success ? '✓ Тесты OK' : '✕ Ошибки') : 'Запустить тесты'}
+        </button>
+        <button
+          onClick={handleExecute}
+          disabled={isExecuting}
+          className={`px-5 py-3 text-sm font-semibold rounded-xl transition-all duration-300 flex items-center gap-2 ${
+            executionResult
+              ? executionResult.success
+                ? 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white shadow-lg shadow-blue-500/30 scale-105'
+                : 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/30'
+              : 'bg-white/20 backdrop-blur-sm text-white hover:bg-white/30'
+          } ${isExecuting ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isExecuting ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : executionResult ? (
+            executionResult.success ? (
+              <CheckCircle className="w-4 h-4" />
+            ) : (
+              <AlertCircle className="w-4 h-4" />
+            )
+          ) : (
+            <Terminal className="w-4 h-4" />
+          )}
+          {isExecuting ? 'Выполнение...' : executionResult ? (executionResult.success ? '✓ Выполнено' : '✕ Ошибка') : 'Выполнить'}
+        </button>
+        <button
           onClick={handleValidate}
           disabled={isValidating}
           className={`px-5 py-3 text-sm font-semibold rounded-xl transition-all duration-300 flex items-center gap-2 ${
@@ -141,6 +226,100 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
           </button>
         )}
       </div>
+
+      {/* Test Results Panel */}
+      {testResults && (
+        <div className={`mb-6 p-6 rounded-2xl border-2 backdrop-blur-sm slide-in-down ${
+          testResults.success
+            ? 'bg-green-500/20 border-green-500/50'
+            : 'bg-red-500/20 border-red-500/50'
+        }`}>
+          <div className="flex items-start gap-4">
+            {testResults.success ? (
+              <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center shadow-lg scale-in">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg scale-in">
+                <AlertCircle className="w-6 h-6 text-white" />
+              </div>
+            )}
+            <div className="flex-1">
+              <p className={`font-bold text-lg ${testResults.success ? 'text-green-300' : 'text-red-300'}`}>
+                {testResults.success ? 'Тесты пройдены' : 'Ошибки тестов'}
+              </p>
+              {testResults.execution && (
+                <div className="mt-3">
+                  {testResults.execution.stdout && (
+                    <div className="bg-slate-900/50 rounded-lg p-3 text-sm text-green-100 font-mono">
+                      <p className="text-xs text-green-300 mb-1">✓ Вывод:</p>
+                      <pre className="whitespace-pre-wrap">{testResults.execution.stdout}</pre>
+                    </div>
+                  )}
+                  {testResults.execution.stderr && (
+                    <div className="mt-2 bg-red-900/30 rounded-lg p-3 text-sm text-red-100 font-mono">
+                      <p className="text-xs text-red-300 mb-1">✕ Ошибка:</p>
+                      <pre className="whitespace-pre-wrap">{testResults.execution.stderr}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+              {testResults.error && (
+                <div className="mt-3 bg-red-900/30 rounded-lg p-3 text-sm text-red-100 font-mono">
+                  {testResults.error}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Execution Results Panel */}
+      {executionResult && (
+        <div className={`mb-6 p-6 rounded-2xl border-2 backdrop-blur-sm slide-in-down ${
+          executionResult.success
+            ? 'bg-blue-500/20 border-blue-500/50'
+            : 'bg-red-500/20 border-red-500/50'
+        }`}>
+          <div className="flex items-start gap-4">
+            {executionResult.success ? (
+              <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg scale-in">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg scale-in">
+                <AlertCircle className="w-6 h-6 text-white" />
+              </div>
+            )}
+            <div className="flex-1">
+              <p className={`font-bold text-lg ${executionResult.success ? 'text-blue-300' : 'text-red-300'}`}>
+                {executionResult.success ? 'Код выполнен' : 'Ошибка выполнения'}
+              </p>
+              {executionResult.execution && (
+                <div className="mt-3">
+                  {executionResult.execution.stdout && (
+                    <div className="bg-slate-900/50 rounded-lg p-3 text-sm text-blue-100 font-mono">
+                      <p className="text-xs text-blue-300 mb-1">✓ Вывод:</p>
+                      <pre className="whitespace-pre-wrap">{executionResult.execution.stdout}</pre>
+                    </div>
+                  )}
+                  {executionResult.execution.stderr && (
+                    <div className="mt-2 bg-red-900/30 rounded-lg p-3 text-sm text-red-100 font-mono">
+                      <p className="text-xs text-red-300 mb-1">✕ Ошибка:</p>
+                      <pre className="whitespace-pre-wrap">{executionResult.execution.stderr}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+              {executionResult.execution?.error && (
+                <div className="mt-3 bg-red-900/30 rounded-lg p-3 text-sm text-red-100 font-mono">
+                  {executionResult.execution.error}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Validation Result Panel */}
       {showValidationPanel && validation && (

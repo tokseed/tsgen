@@ -154,4 +154,50 @@ export const getTokenStats = async () => {
   }
 }
 
+export const executeCode = async (typescriptCode, timeout = 5) => {
+  const formData = new FormData()
+  formData.append('typescript_code', typescriptCode)
+  formData.append('timeout', timeout.toString())
+
+  const response = await fetch(`${API_URL}/execute-only`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error('Ошибка выполнения кода')
+  }
+
+  return await response.json()
+}
+
+export const runTests = async (typescriptCode, testCode, timeout = 10) => {
+  const formData = new FormData()
+  formData.append('typescript_code', typescriptCode)
+  formData.append('test_code', testCode)
+  formData.append('timeout', timeout.toString())
+
+  const response = await fetch(`${API_URL}/run-tests`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error('Ошибка запуска тестов')
+  }
+
+  return await response.json()
+}
+
+export const checkExecutor = async () => {
+  try {
+    const response = await fetch(`${API_URL}/executor/check`)
+    const data = await response.json()
+    return data
+  } catch (err) {
+    console.log('Executor check failed')
+    return null
+  }
+}
+
 export { ApiLogger }
