@@ -161,19 +161,34 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 ## 🔑 Настройка .env
 
-```env
-# LLM Provider
-OPENROUTER_API_KEY=sk-or-...
-GIGACHAT_CREDENTIALS=client_id:client_secret
-LLM_PROVIDER=auto
+### GigaChat API (Сбер)
 
-# LangFuse (опционально)
+1. Зарегистрируйте приложение в [СберБизнес](https://developers.sber.ru/)
+2. Получите `Client ID` и `Client Secret`
+3. Скопируйте в `.env` в формате `ClientID:ClientSecret`:
+
+```env
+GIGACHAT_CREDENTIALS=ваш_client_id:ваш_client_secret
+LLM_PROVIDER=gigachat
+```
+
+> ⚠️ **Важно:** Токен действителен 30 минут, библиотека автоматически обновляет его.
+
+### OpenRouter API
+
+```env
+OPENROUTER_API_KEY=sk-or-...
+LLM_PROVIDER=openrouter
+```
+
+### LangFuse (опционально)
+
+Для отслеживания использования токенов:
+
+```env
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://cloud.langfuse.com
-
-# App
-APP_URL=http://localhost:8000
 ```
 
 ## 📦 Поддерживаемые форматы

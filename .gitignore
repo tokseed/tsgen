@@ -37,6 +37,7 @@ frontend/.env.production
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Node.js (frontend)
 frontend/node_modules/
@@ -57,7 +58,25 @@ htmlcov/
 # Temporary files
 *.tmp
 *.temp
+*.bak
 
 # Local scripts (Windows)
 *.bat
 !setup_and_run.bat
+*.ps1
+
+# CI/CD (опционально)
+.github/
+.gitlab-ci.yml
+
+# Test directories
+tests/
+
+# Cache and artifacts
+efv/
+nul
+pytest.ini
+setup_python311.ps1
+
+# Frontend test config
+# frontend/vitest.config.ts - закомментировано, если используется

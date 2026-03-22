@@ -10,35 +10,32 @@ echo.
 
 cd /d "%~dp0"
 
-:: === ШАГ 1: Проверка Python ===
-echo [1/8] Проверка Python...
-set "PYTHON_EXE="
+:: === ШАГ 1: Проверка Python 3.11 ===
+echo [1/8] Проверка Python 3.11...
+set "PYTHON_EXE=C:\Users\povel\AppData\Local\Programs\Python\Python311\python.exe"
 
-:: Ищем Python 3.11, 3.12 или любой другой
-for %%v in (3.12 3.11 3.10) do (
-    for /f "tokens=*" %%p in ('where python%%v 2^>nul') do (
-        if not defined PYTHON_EXE set "PYTHON_EXE=%%p"
-    )
-)
-
-if not defined PYTHON_EXE (
-    where python >nul 2>&1
-    if !errorlevel! equ 0 (
-        set "PYTHON_EXE=python"
-    )
-)
-
-if not defined PYTHON_EXE (
-    echo ❌ Python не найден!
+if not exist "%PYTHON_EXE%" (
+    echo ❌ Python 3.11 не найден в стандартном расположении!
     echo.
-    echo Установите Python 3.10+ с https://www.python.org/downloads/
-    echo Отметьте "Add Python to PATH" при установке
-    pause
-    exit /b 1
+    echo Попытка найти Python 3.11 в системе...
+    for /f "delims=" %%p in ('where python3.11 2^>nul') do (
+        set "PYTHON_EXE=%%p"
+        goto :found
+    )
+    :found
+    if not defined PYTHON_EXE (
+        echo.
+        echo ❌ Python 3.11 не найден!
+        echo.
+        echo Установите Python 3.11 с https://www.python.org/downloads/release/python-3110/
+        echo Отметьте "Add Python to PATH" при установке
+        pause
+        exit /b 1
+    )
 )
 
 for /f "tokens=2" %%i in ('"!PYTHON_EXE!" --version 2^>^&1') do set PYTHON_VERSION=%%i
-echo ✅ Python найден: !PYTHON_VERSION!
+echo ✅ Python 3.11 найден: !PYTHON_VERSION!
 echo.
 
 :: === ШАГ 2: Создание venv ===

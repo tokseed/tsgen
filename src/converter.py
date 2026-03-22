@@ -47,30 +47,40 @@ except ImportError:
 
 
 class GigaChatAuth:
-    """GigaChat API авторизация (Сбер)."""
+    """
+    GigaChat API авторизация (Сбер).
+    
+    Формат credentials: ClientID:ClientSecret
+    Получите ключи в СберБизнес: https://developers.sber.ru/
+    """
 
     AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1"
     MODELS_URL = "https://gigachat.devices.sberbank.ru/api/v1/models"
 
     def __init__(self, credentials: str, scope: str = "GIGACHAT_API_PERS"):
-        self.credentials = credentials
+        self.credentials = credentials.strip()
         self.scope = scope
         self.access_token = None
         self.token_expires_at = 0
-        self.is_direct_token = ":" not in credentials
+        
+        # Проверяем формат: ClientID:ClientSecret (содержит двоеточие)
+        self.is_valid_format = ":" in self.credentials
 
     def get_token(self) -> str:
-        """Получение токена доступа."""
+        """Получение access token через OAuth."""
+        # Кэширование токена
         if self.access_token and time.time() < self.token_expires_at - 60:
             return self.access_token
 
-        if self.is_direct_token:
-            self.access_token = self.credentials
-            self.token_expires_at = time.time() + 1800
-            return self.access_token
+        if not self.is_valid_format:
+            raise ValueError(
+                "Неверный формат GIGACHAT_CREDENTIALS. "
+                "Ожидается ClientID:ClientSecret (получите в СберБизнес)"
+            )
 
         try:
+            # Формируем Basic Auth: Base64(ClientID:ClientSecret)
             credentials_b64 = base64.b64encode(self.credentials.encode()).decode()
 
             headers = {
@@ -91,14 +101,23 @@ class GigaChatAuth:
 
             result = response.json()
             self.access_token = result["access_token"]
-            self.token_expires_at = result.get("expires_at", time.time() + 1800)
+            
+            # Парсим время истечения (timestamp в секундах)
+            expires_at = result.get("expires_at", 0)
+            if isinstance(expires_at, (int, float)):
+                self.token_expires_at = expires_at
+            else:
+                self.token_expires_at = time.time() + 1800
 
             return self.access_token
+            
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"GigaChat OAuth error: {e}"
+            if hasattr(e, 'response') and e.response is not None:
+                error_msg += f" - {e.response.text}"
+            raise ValueError(error_msg)
         except Exception as e:
-            print(f"OAuth failed, using direct token: {e}")
-            self.access_token = self.credentials
-            self.token_expires_at = time.time() + 1800
-            return self.access_token
+            raise ValueError(f"GigaChat auth failed: {e}")
 
     def chat(self, messages: list, model: str = "GigaChat-2") -> str:
         """Отправка запроса к GigaChat."""

@@ -40,8 +40,8 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 def get_llm_config(provider: str = "auto"):
     """Получение конфигурации LLM."""
-    gigachat_credentials = os.getenv("GIGACHAT_CREDENTIALS", "")
-    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    gigachat_credentials = os.getenv("GIGACHAT_CREDENTIALS", "").strip()
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     configured_provider = os.getenv("LLM_PROVIDER", "auto")
 
     # Если provider не указан, используем настроенный
@@ -52,17 +52,19 @@ def get_llm_config(provider: str = "auto"):
     if provider == "auto":
         if openrouter_key:
             provider = "openrouter"
-        elif gigachat_credentials:
+        elif gigachat_credentials and ":" in gigachat_credentials:
             provider = "gigachat"
         else:
             provider = "mock"
 
     if provider == "gigachat" and gigachat_credentials:
-        try:
-            decoded = base64.b64decode(gigachat_credentials).decode()
-            return {"credentials": decoded, "provider": "gigachat"}
-        except Exception:
-            return {"credentials": gigachat_credentials, "provider": "gigachat"}
+        # Проверяем формат ClientID:ClientSecret
+        if ":" not in gigachat_credentials:
+            return {
+                "provider": "mock",
+                "error": "GIGACHAT_CREDENTIALS должен быть в формате ClientID:ClientSecret"
+            }
+        return {"credentials": gigachat_credentials, "provider": "gigachat"}
 
     if provider == "openrouter" and openrouter_key:
         return {"api_key": openrouter_key, "provider": "openrouter"}
