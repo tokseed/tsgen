@@ -16,6 +16,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 import base64
 import tempfile
+from datetime import datetime
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +44,15 @@ app.add_middleware(
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "ts_generator_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Глобальный счетчик токенов
+TOKEN_STATS = {
+    "total_requests": 0,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_tokens": 0,
+    "last_updated": None,
+}
 
 
 def get_llm_config(provider: str = "auto"):
@@ -109,6 +119,7 @@ async def health_check():
             ".jpeg",
         ],
         "cache": cache_stats,
+        "token_stats": TOKEN_STATS,
     }
 
 
@@ -236,13 +247,33 @@ async def generate_code(
             llm_config=llm_config,
         )
 
-        return JSONResponse(
-            content={
-                "success": True,
-                "typescript_code": result,
-                "filename": file.filename,
-            }
-        )
+        # Обновляем статистику токенов если доступна
+        if isinstance(result, tuple):
+            code, usage = result
+            if usage:
+                TOKEN_STATS["total_requests"] += 1
+                TOKEN_STATS["total_prompt_tokens"] += usage.get("prompt_tokens", 0)
+                TOKEN_STATS["total_completion_tokens"] += usage.get(
+                    "completion_tokens", 0
+                )
+                TOKEN_STATS["total_tokens"] += usage.get("total_tokens", 0)
+                TOKEN_STATS["last_updated"] = datetime.now().isoformat()
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "typescript_code": code,
+                    "filename": file.filename,
+                    "usage": usage,
+                }
+            )
+        else:
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "typescript_code": result,
+                    "filename": file.filename,
+                }
+            )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

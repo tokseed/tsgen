@@ -50,23 +50,44 @@ function CacheStats({ stats }) {
 }
 
 function TokenStats({ stats }) {
-  if (!stats || !stats.enabled) return null
+  if (!stats) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 rounded-2xl border border-amber-500/30 text-xs">
+        <Zap className="w-4 h-4 text-amber-600" />
+        <span className="text-amber-700">Tokens: 0</span>
+      </div>
+    )
+  }
+  
+  const hasTokens = (stats.total_tokens > 0) || (stats.total_prompt_tokens > 0) || (stats.total_completion_tokens > 0)
+  const total = stats.total_tokens || (stats.total_prompt_tokens || 0) + (stats.total_completion_tokens || 0)
 
   return (
     <div className="flex items-center gap-4 px-4 py-2 bg-white/80 backdrop-blur-lg rounded-2xl border border-slate-200/50 text-xs">
       <div className="flex items-center gap-1 text-purple-600">
         <Zap className="w-4 h-4" />
-        <span className="font-semibold">Tokens: {(stats.total_tokens || 0).toLocaleString()}</span>
+        <span className="font-semibold">Tokens: {total.toLocaleString()}</span>
       </div>
-      <div className="text-slate-500">
-        {stats.total_requests || 0} req
-      </div>
-      <div className="text-slate-400" title="Prompt tokens">
-        P: {(stats.total_prompt_tokens || 0).toLocaleString()}
-      </div>
-      <div className="text-slate-400" title="Completion tokens">
-        C: {(stats.total_completion_tokens || 0).toLocaleString()}
-      </div>
+      {stats.total_requests > 0 && (
+        <div className="text-slate-500">
+          {stats.total_requests} req
+        </div>
+      )}
+      {hasTokens && (
+        <>
+          <div className="text-slate-400" title="Prompt tokens">
+            P: {(stats.total_prompt_tokens || 0).toLocaleString()}
+          </div>
+          <div className="text-slate-400" title="Completion tokens">
+            C: {(stats.total_completion_tokens || 0).toLocaleString()}
+          </div>
+        </>
+      )}
+      {!stats.enabled && !hasTokens && (
+        <div className="text-amber-600" title={stats.message}>
+          LangFuse не настроен
+        </div>
+      )}
     </div>
   )
 }
@@ -89,14 +110,20 @@ export default function App() {
   const [showValidation, setShowValidation] = useState(false)
 
   useEffect(() => {
+    console.log('[App] Initializing...')
     checkApiConnection()
-    const interval = setInterval(checkApiConnection, 30000)
+    const interval = setInterval(() => {
+      console.log('[App] Periodic health check')
+      checkApiConnection()
+    }, 30000)
     return () => clearInterval(interval)
   }, [])
 
   const checkApiConnection = async () => {
+    console.log('[App] Checking API connection...')
     try {
       const result = await checkHealth()
+      console.log('[App] Health check result:', result)
       setApiConnected(true)
       setApiProvider(result?.llm_provider || 'auto')
       setCacheStats(result?.cache || null)
@@ -104,14 +131,14 @@ export default function App() {
       // Получаем статистику токенов
       try {
         const tokens = await getTokenStats()
-        if (tokens) {
-          setTokenStats(tokens)
-        }
+        console.log('[App] Token stats:', tokens)
+        setTokenStats(tokens || null)
       } catch (e) {
-        console.log('Token stats not available:', e.message)
+        console.log('[App] Token stats error:', e.message)
+        setTokenStats(null)
       }
     } catch (err) {
-      console.error('Health check failed:', err)
+      console.error('[App] Health check failed:', err)
       setApiConnected(false)
     }
   }
