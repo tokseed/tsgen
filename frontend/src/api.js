@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
 class ApiLogger {
   static logs = []
@@ -42,7 +42,7 @@ export const generateCode = async (file, targetJson, provider = 'auto') => {
   formData.append('llm_provider', provider)
 
   const startTime = Date.now()
-  const data = await apiFetch('/api/generate', {
+  const data = await apiFetch('/generate', {
     method: 'POST',
     body: formData,
   })
@@ -56,7 +56,7 @@ export const validateCode = async (typescriptCode, targetJson = null) => {
   formData.append('typescript_code', typescriptCode)
   if (targetJson) formData.append('target_json', targetJson)
 
-  return apiFetch('/api/validate', {
+  return apiFetch('/validate', {
     method: 'POST',
     body: formData,
   })
@@ -68,7 +68,7 @@ export const generateTests = async (typescriptCode, targetJson, filename) => {
   formData.append('target_json', targetJson)
   formData.append('filename', filename)
 
-  return apiFetch('/api/generate-tests', {
+  return apiFetch('/generate-tests', {
     method: 'POST',
     body: formData,
   })
@@ -80,19 +80,19 @@ export const fullPipeline = async (file, targetJson, provider = 'auto') => {
   formData.append('target_json', targetJson)
   formData.append('llm_provider', provider)
 
-  return apiFetch('/api/full-pipeline', {
+  return apiFetch('/full-pipeline', {
     method: 'POST',
     body: formData,
   })
 }
 
 export const checkHealth = async () => {
-  return apiFetch('/api/health')
+  return apiFetch('/health')
 }
 
 export const getTokenStats = async () => {
   try {
-    return await apiFetch('/api/token-stats')
+    return await apiFetch('/token-stats')
   } catch (err) {
     console.log('[TokenStats] Not available:', err.message)
     return null
@@ -104,7 +104,7 @@ export const executeCode = async (typescriptCode, timeout = 5) => {
   formData.append('typescript_code', typescriptCode)
   formData.append('timeout', timeout.toString())
 
-  return apiFetch('/api/execute-only', {
+  return apiFetch('/execute-only', {
     method: 'POST',
     body: formData,
   })
@@ -116,7 +116,7 @@ export const runTests = async (typescriptCode, testCode, timeout = 10) => {
   formData.append('test_code', testCode)
   formData.append('timeout', timeout.toString())
 
-  return apiFetch('/api/run-tests', {
+  return apiFetch('/run-tests', {
     method: 'POST',
     body: formData,
   })
@@ -124,7 +124,7 @@ export const runTests = async (typescriptCode, testCode, timeout = 10) => {
 
 export const checkExecutor = async () => {
   try {
-    return await apiFetch('/api/executor/check')
+    return await apiFetch('/executor/check')
   } catch {
     return null
   }
@@ -137,7 +137,7 @@ export const fixCodeDirect = async (typescriptCode, targetJson, errors = '', tes
   formData.append('errors', errors)
   formData.append('test_errors', testErrors)
 
-  return apiFetch('/api/fix-direct', {
+  return apiFetch('/fix-direct', {
     method: 'POST',
     body: formData,
   })
