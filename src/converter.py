@@ -49,7 +49,7 @@ except ImportError:
 class GigaChatAuth:
     """
     GigaChat API авторизация (Сбер).
-    
+
     Формат credentials: ClientID:ClientSecret
     Получите ключи в СберБизнес: https://developers.sber.ru/
     """
@@ -63,7 +63,7 @@ class GigaChatAuth:
         self.scope = scope
         self.access_token = None
         self.token_expires_at = 0
-        
+
         # Проверяем формат: ClientID:ClientSecret (содержит двоеточие)
         self.is_valid_format = ":" in self.credentials
 
@@ -101,7 +101,7 @@ class GigaChatAuth:
 
             result = response.json()
             self.access_token = result["access_token"]
-            
+
             # Парсим время истечения (timestamp в секундах)
             expires_at = result.get("expires_at", 0)
             if isinstance(expires_at, (int, float)):
@@ -110,10 +110,10 @@ class GigaChatAuth:
                 self.token_expires_at = time.time() + 1800
 
             return self.access_token
-            
+
         except requests.exceptions.HTTPError as e:
             error_msg = f"GigaChat OAuth error: {e}"
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 error_msg += f" - {e.response.text}"
             raise ValueError(error_msg)
         except Exception as e:
@@ -166,12 +166,13 @@ class OpenRouterAuth:
 
     BASE_URL = "https://openrouter.ai/api/v1"
 
-    # Рекомендуемые модели для генерации кода
     MODELS = {
         "best": "anthropic/claude-3.5-sonnet",
         "balanced": "meta-llama/llama-3.3-70b-instruct",
         "fast": "meta-llama/llama-3.2-3b-instruct:free",
         "free": "google/gemma-2-9b-it:free",
+        # Бесплатные модели OpenRouter
+        "deepseek": "deepseek/deepseek-chat-v3-0324",
     }
 
     def __init__(self, api_key: str, model_preset: str = "balanced"):
@@ -180,70 +181,101 @@ class OpenRouterAuth:
 
         # LangFuse интеграция
         self.langfuse = None
+        self.trace = None
         self._init_langfuse()
 
     def _init_langfuse(self):
-        """Инициализация LangFuse для трекинга (SDK v3)."""
+        """Инициализация LangFuse для трекинга."""
         try:
-            from langfuse import get_client, observe
-            
+            from langfuse import Langfuse
+            import os
+
             langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
             langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
             langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-            
+
             if langfuse_public_key and langfuse_secret_key:
-                # SDK v3 использует get_client() вместо прямого конструктора
-                import os
-                os.environ.setdefault("LANGFUSE_PUBLIC_KEY", langfuse_public_key)
-                os.environ.setdefault("LANGFUSE_SECRET_KEY", langfuse_secret_key)
-                os.environ.setdefault("LANGFUSE_HOST", langfuse_host)
-                
-                self.langfuse = get_client()
-                self._observe = observe
-                print("[LangFuse] SDK v3 инициализирован успешно")
+                self.langfuse = Langfuse(
+                    public_key=langfuse_public_key,
+                    secret_key=langfuse_secret_key,
+                    host=langfuse_host,
+                )
+                print("[LangFuse] Инициализирован успешно")
+            else:
+                print("[LangFuse] Ключи не найдены в .env")
         except ImportError:
-            print("[LangFuse] Не установлен: pip install langfuse>=3.0.0")
+            print("[LangFuse] Не установлен: pip install langfuse")
         except Exception as e:
             print(f"[LangFuse] Ошибка инициализации: {e}")
 
     def chat(self, messages: list, model: str = None) -> str:
-        """Отправка запроса к OpenRouter с трекингом LangFuse (SDK v3)."""
+        """Отправка запроса к OpenRouter с трекингом LangFuse."""
         model_to_use = model or self.model
-        
-        # LangFuse SDK v3 использует контекстный менеджер
+        start_time = time.time()
+
+        # Создаём trace в LangFuse
         if self.langfuse:
             try:
-                with self.langfuse.start_as_current_observation(
-                    as_type="generation",
+                self.trace = self.langfuse.trace(
                     name="openrouter-chat",
-                    model=model_to_use,
-                    input={"messages": messages}
-                ) as generation:
-                    result = self._make_request(messages, model_to_use, generation)
-                    generation.update(output={"text": result})
-                    return result
+                    input={"messages": messages},
+                    metadata={
+                        "provider": "openrouter",
+                        "model": model_to_use,
+                    },
+                )
             except Exception as e:
-                print(f"[LangFuse] Ошибка trace: {e}")
-                # Fallback к запросу без trace
-                return self._make_request(messages, model_to_use, None)
-        else:
-            return self._make_request(messages, model_to_use, None)
-    
-    def _make_request(self, messages: list, model: str, generation=None) -> str:
+                print(f"[LangFuse] Ошибка создания trace: {e}")
+                self.trace = None
+
+        try:
+            result = self._make_request(messages, model_to_use)
+
+            # Логируем результат в LangFuse
+            if self.langfuse and self.trace:
+                try:
+                    elapsed_time = time.time() - start_time
+                    self.trace.update(
+                        output={"content": result[:500] if result else None},
+                        metadata={
+                            "model": model_to_use,
+                            "duration_ms": round(elapsed_time * 1000),
+                        },
+                    )
+                    self.langfuse.flush()
+                except Exception as e:
+                    print(f"[LangFuse] Ошибка обновления trace: {e}")
+
+            return result
+
+        except Exception as e:
+            # Логируем ошибку
+            if self.langfuse and self.trace:
+                try:
+                    self.trace.update(
+                        output={"error": str(e)},
+                        level="ERROR",
+                    )
+                    self.langfuse.flush()
+                except:
+                    pass
+            raise
+
+    def _make_request(self, messages: list, model: str) -> str:
         """Внутренний метод для HTTP запроса к OpenRouter."""
         max_retries = 3
         retry_delay = 2
-        
+
         for attempt in range(max_retries):
             try:
-                start_time = time.time()
-                
                 response = requests.post(
                     f"{self.BASE_URL}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
-                        "HTTP-Referer": os.getenv("APP_URL", "https://github.com/tsgen"),
+                        "HTTP-Referer": os.getenv(
+                            "APP_URL", "https://github.com/tsgen"
+                        ),
                         "X-Title": "TS Generator",
                     },
                     json={
@@ -251,15 +283,10 @@ class OpenRouterAuth:
                         "messages": messages,
                         "temperature": 0.3,
                         "max_tokens": 4000,
-                        "top_p": 0.95,
-                        "frequency_penalty": 0.1,
-                        "presence_penalty": 0.1,
                     },
                     timeout=120,
                 )
-                
-                elapsed_time = time.time() - start_time
-                
+
                 # Обработка ошибок API
                 if response.status_code == 429:
                     raise ValueError("Rate limit превышен. Подождите немного.")
@@ -267,51 +294,40 @@ class OpenRouterAuth:
                     raise ValueError("Неверный API ключ OpenRouter.")
                 elif response.status_code == 402:
                     raise ValueError("Недостаточно кредитов на счету OpenRouter.")
-                
+
                 response.raise_for_status()
                 result = response.json()
-                
+
                 if "error" in result:
                     error_msg = result["error"].get("message", "Неизвестная ошибка API")
                     raise ValueError(f"Ошибка OpenRouter API: {error_msg}")
-                
+
                 if "choices" not in result or len(result["choices"]) == 0:
                     raise ValueError("Пустой ответ от OpenRouter")
-                
+
                 content = result["choices"][0]["message"]["content"]
-                
+
                 if not content or content.strip() == "":
                     raise ValueError("Пустое содержимое ответа")
-                
-                # Обновление LangFuse с метриками
-                if generation:
-                    try:
-                        usage = result.get("usage", {})
-                        generation.update(
-                            usage_details={
-                                "input_tokens": usage.get("prompt_tokens", 0),
-                                "output_tokens": usage.get("completion_tokens", 0),
-                                "total_tokens": usage.get("total_tokens", 0),
-                            },
-                            metadata={
-                                "model": model,
-                                "duration_seconds": round(elapsed_time, 2)
-                            }
-                        )
-                    except Exception as e:
-                        print(f"[LangFuse] Ошибка обновления: {e}")
-                
+
+                # Логируем usage в консоль для отладки
+                usage = result.get("usage", {})
+                if usage:
+                    print(
+                        f"[OpenRouter] Tokens: {usage.get('prompt_tokens', 0)} in / {usage.get('completion_tokens', 0)} out"
+                    )
+
                 return content
-                
+
             except requests.exceptions.Timeout:
                 if attempt == max_retries - 1:
-                    raise ValueError("Таймаут соединения с OpenRouter. Попробуйте позже.")
+                    raise ValueError("Таймаут соединения с OpenRouter.")
                 time.sleep(retry_delay * (attempt + 1))
             except requests.exceptions.RequestException as e:
                 if attempt == max_retries - 1:
                     raise ValueError(f"Ошибка соединения: {str(e)}")
                 time.sleep(retry_delay)
-        
+
         raise ValueError("Не удалось выполнить запрос после нескольких попыток")
 
     def check_connection(self) -> dict:
@@ -467,7 +483,9 @@ class FileProcessor:
     def _process_docx(filepath: str) -> tuple:
         """Обработка DOCX через python-docx."""
         if not DOCX_AVAILABLE:
-            return "DOCX processing requires python-docx", {"error": "python-docx not installed"}
+            return "DOCX processing requires python-docx", {
+                "error": "python-docx not installed"
+            }
 
         try:
             doc = Document(filepath)
@@ -502,19 +520,23 @@ class FileProcessor:
         """Обработка изображений через Pillow (OCR требует tesseract)."""
         if not PIL_AVAILABLE:
             return "Image processing requires Pillow", {"error": "Pillow not installed"}
-        
+
         try:
             image = Image.open(filepath)
             structure = {"size": image.size, "mode": image.mode, "format": image.format}
-            
+
             # Пытаемся использовать OCR если доступен
             try:
                 import pytesseract
+
                 text = pytesseract.image_to_string(image, lang="rus+eng")
                 return text[:5000], {**structure, "text_length": len(text)}
             except (ImportError, Exception):
                 # Если OCR недоступен, возвращаем метаданные
-                return f"[Image: {image.size[0]}x{image.size[1]}, {image.format}]", structure
+                return (
+                    f"[Image: {image.size[0]}x{image.size[1]}, {image.format}]",
+                    structure,
+                )
         except Exception as e:
             return f"Image error: {e}", {"error": str(e)}
 
@@ -843,8 +865,12 @@ export {{ transformData }};
         if isinstance(data, list):
             if not data:
                 return f"interface {name} {{ [key: string]: any; }}"
-            data = data[0] if isinstance(data[0], dict) else {"value": type(data[0]).__name__}
-        
+            data = (
+                data[0]
+                if isinstance(data[0], dict)
+                else {"value": type(data[0]).__name__}
+            )
+
         prefix = "  " * indent
         lines = [f"{prefix}interface {name} {{"]
 
