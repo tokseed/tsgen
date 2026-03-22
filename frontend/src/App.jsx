@@ -343,6 +343,10 @@ export default function App() {
               showValidation={showValidation}
               onCopy={handleCopy}
               copied={copied}
+              targetJson={targetJson}
+              selectedFile={selectedFile}
+              onCodeUpdate={setGeneratedCode}
+              onGenerate={handleGenerate}
             />
           ) : (
             <EmptyState />

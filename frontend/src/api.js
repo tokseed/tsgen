@@ -200,4 +200,57 @@ export const checkExecutor = async () => {
   }
 }
 
+export const fixCode = async (file, targetJson, currentCode, errors, testErrors = '', provider = 'auto') => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('target_json', targetJson)
+  formData.append('current_code', currentCode)
+  formData.append('errors', errors)
+  formData.append('test_errors', testErrors)
+  formData.append('llm_provider', provider)
+
+  try {
+    const response = await fetch(`${API_URL}/fix`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Ошибка исправления')
+    }
+
+    return await response.json()
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      throw new Error('Не удалось подключиться к API')
+    }
+    throw err
+  }
+}
+
+export const fixCodeDirect = async (typescriptCode, targetJson, errors = '', testErrors = '') => {
+  const formData = new FormData()
+  formData.append('typescript_code', typescriptCode)
+  formData.append('target_json', targetJson)
+  formData.append('errors', errors)
+  formData.append('test_errors', testErrors)
+
+  try {
+    const response = await fetch(`${API_URL}/fix-direct`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Ошибка исправления')
+    }
+
+    return await response.json()
+  } catch (err) {
+    throw err
+  }
+}
+
 export { ApiLogger }

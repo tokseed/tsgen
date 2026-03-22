@@ -77,39 +77,48 @@ def _wrap_code_for_json_output(code: str) -> str:
     """
     Оборачивает код для безопасного выполнения и вывода JSON.
     """
-    # Импорты для Node.js совместимости
-    imports = """
-// Auto-generated imports for Node.js environment
-"""
-    
-    # Обёртка для обработки ошибок и вывода JSON
     wrapper = """
-// === CODE WRAPPER START ===
+// === AUTO-GENERATED TEST WRAPPER ===
 (async () => {{
+    const testInput = "id,name,value\\n1,test,100\\n2,demo,200\\n3,sample,300";
+    
     try {{
         // Выполняем пользовательский код
         {code}
         
-        // Если код ничего не вывел, пробуем найти результат
-        // Это нужно для случаев когда функция просто возвращает значение
+        // Вызываем transformData с тестовыми данными
+        if (typeof transformData === 'function') {{
+            const result = await transformData(testInput);
+            console.log(JSON.stringify({{
+                success: true,
+                data: result,
+                tests: [
+                    {{ name: 'function exists', passed: true }},
+                    {{ name: 'returns promise', passed: result instanceof Promise }},
+                    {{ name: 'has data property', passed: result && result.data !== undefined }},
+                    {{ name: 'has metadata', passed: result && result.metadata !== undefined }}
+                ]
+            }}, null, 2));
+        }} else {{
+            console.log(JSON.stringify({{
+                success: false,
+                error: 'transformData function not found'
+            }}));
+            process.exitCode = 1;
+        }}
     }} catch (e) {{
-        // Выводим ошибку в JSON формате
-        const errorOutput = {{
+        console.error(JSON.stringify({{
             success: false,
             error: {{
                 message: e instanceof Error ? e.message : String(e),
-                stack: e instanceof Error ? e.stack : undefined,
                 name: e instanceof Error ? e.name : 'UnknownError'
             }}
-        }};
-        console.error(JSON.stringify(errorOutput));
+        }}, null, 2));
         process.exitCode = 1;
     }}
 }})();
-// === CODE WRAPPER END ===
-""".format(code=code)
-    
-    return imports + wrapper
+"""
+    return wrapper.format(code=code)
 
 
 def _run_tsx(file_path: str, timeout: int) -> subprocess.CompletedProcess:

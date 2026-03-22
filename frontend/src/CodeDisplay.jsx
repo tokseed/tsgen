@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle, Play, Terminal } from 'lucide-react'
+import { Copy, Check, Download, Code2, Sparkles, CopyPlus, RefreshCw, TestTube, ShieldCheck, ShieldAlert, FileCheck, Zap, FileCode, Info, AlertCircle, CheckCircle, Play, Terminal, Wrench, Wand2 } from 'lucide-react'
 import Prism from 'prismjs'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/themes/prism-tomorrow.css'
-import { runTests, executeCode } from './api'
+import { runTests, executeCode, fixCodeDirect } from './api'
 
-export function CodeDisplay({ code, filename, onGenerateTests, onValidate, validation, showValidation = false, onCopy, copied }) {
+export function CodeDisplay({ 
+  code, 
+  filename, 
+  onGenerateTests, 
+  onValidate, 
+  validation, 
+  showValidation = false, 
+  onCopy, 
+  copied,
+  targetJson,
+  selectedFile,
+  onCodeUpdate,
+  onGenerate,
+}) {
   const [downloaded, setDownloaded] = useState(false)
   const [activeTab, setActiveTab] = useState('code')
   const [testsCode, setTestsCode] = useState(null)
@@ -16,6 +29,8 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
   const [testResults, setTestResults] = useState(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [executionResult, setExecutionResult] = useState(null)
+  const [isFixing, setIsFixing] = useState(false)
+  const [fixAttempts, setFixAttempts] = useState(0)
 
   useEffect(() => {
     Prism.highlightAll()
@@ -107,6 +122,38 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
       setIsExecuting(false)
     }
   }
+
+  const handleFix = async () => {
+    if (!code || !targetJson) return
+    
+    setIsFixing(true)
+    try {
+      const errors = validation?.errors?.join('\n') || ''
+      const testErr = testResults?.error || ''
+      
+      const result = await fixCodeDirect(code, targetJson, errors, testErr)
+      
+      if (result.success && result.typescript_code) {
+        if (onCodeUpdate) {
+          onCodeUpdate(result.typescript_code)
+        }
+        setFixAttempts(prev => prev + 1)
+        
+        // Автоматически валидируем новый код
+        if (onValidate) {
+          await onValidate()
+        }
+      }
+    } catch (err) {
+      console.error('Fix failed:', err)
+    } finally {
+      setIsFixing(false)
+    }
+  }
+
+  const hasErrors = validation && (!validation.valid || (validation.errors && validation.errors.length > 0))
+  const hasTestErrors = testResults && !testResults.success
+  const canFix = hasErrors || hasTestErrors
 
   if (!code) return null
 
@@ -215,6 +262,28 @@ export function CodeDisplay({ code, filename, onGenerateTests, onValidate, valid
             <FileCheck className="w-4 h-4" />
           )}
           {isValidating ? 'Проверка...' : validation ? (validation.valid ? '✓ Валидно' : '✕ Ошибки') : 'Валидация'}
+        </button>
+        <button
+          onClick={handleFix}
+          disabled={isFixing || !canFix}
+          className={`px-5 py-3 text-sm font-semibold rounded-xl transition-all duration-300 flex items-center gap-2 ${
+            canFix
+              ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:scale-105'
+              : 'bg-white/20 backdrop-blur-sm text-white/50 cursor-not-allowed'
+          } ${isFixing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={canFix ? 'Исправить код на основе ошибок' : 'Сначала запустите валидацию или тесты'}
+        >
+          {isFixing ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : (
+            <Wand2 className="w-4 h-4" />
+          )}
+          {isFixing ? 'Исправление...' : 'Исправить'}
+          {fixAttempts > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-full text-xs">
+              {fixAttempts}
+            </span>
+          )}
         </button>
         {validation && (
           <button
