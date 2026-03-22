@@ -118,8 +118,73 @@ async def get_cache_stats():
             return cache_manager.get_stats()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
     return {"enabled": False}
+
+
+@app.get("/api/token-stats")
+async def get_token_stats():
+    """Статистика использования токенов (LangFuse)."""
+    try:
+        from langfuse import Langfuse
+        
+        langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+        langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        
+        if not langfuse_public_key or not langfuse_secret_key:
+            return {
+                "enabled": False,
+                "message": "LangFuse не настроен. Добавьте LANGFUSE_PUBLIC_KEY и LANGFUSE_SECRET_KEY в .env"
+            }
+        
+        langfuse_client = Langfuse(
+            public_key=langfuse_public_key,
+            secret_key=langfuse_secret_key,
+            host=langfuse_host,
+        )
+        
+        # Получаем статистику за последние 7 дней
+        from datetime import datetime, timedelta
+        start_date = datetime.utcnow() - timedelta(days=7)
+        
+        traces = langfuse_client.fetch_traces(
+            name="openrouter-chat",
+            from_start_time=start_date
+        )
+        
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_tokens = 0
+        request_count = 0
+        
+        for trace in traces.data:
+            request_count += 1
+            usage = trace.usage if hasattr(trace, 'usage') else {}
+            if usage:
+                total_prompt_tokens += usage.get('promptTokens', 0)
+                total_completion_tokens += usage.get('completionTokens', 0)
+                total_tokens += usage.get('totalTokens', 0)
+        
+        return {
+            "enabled": True,
+            "period": "7 days",
+            "total_requests": request_count,
+            "total_prompt_tokens": total_prompt_tokens,
+            "total_completion_tokens": total_completion_tokens,
+            "total_tokens": total_tokens,
+            "average_tokens_per_request": round(total_tokens / request_count, 1) if request_count > 0 else 0,
+        }
+    except ImportError:
+        return {
+            "enabled": False,
+            "message": "LangFuse не установлен. Установите: pip install langfuse"
+        }
+    except Exception as e:
+        return {
+            "enabled": False,
+            "error": str(e)
+        }
 
 
 @app.post("/api/generate")

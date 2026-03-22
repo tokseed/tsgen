@@ -143,4 +143,15 @@ export const checkHealth = async () => {
   }
 }
 
+export const getTokenStats = async () => {
+  try {
+    const response = await fetch(`${API_URL}/token-stats`)
+    const data = await response.json()
+    return data
+  } catch (err) {
+    console.log('Token stats not available')
+    return null
+  }
+}
+
 export { ApiLogger }

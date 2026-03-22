@@ -3,7 +3,7 @@ import { Zap, Award, Copy, Check, Download, Code2, FileText, AlertCircle, Loader
 import FileUpload from './FileUpload'
 import JsonInput from './JsonInput'
 import { CodeDisplay, EmptyState } from './CodeDisplay'
-import { generateCode, checkHealth, validateCode, generateTests, fullPipeline } from './api'
+import { generateCode, checkHealth, validateCode, generateTests, fullPipeline, getTokenStats } from './api'
 import ProviderToggle from './ProviderToggle'
 
 function StatusBadge({ connected, provider }) {
@@ -49,6 +49,25 @@ function CacheStats({ stats }) {
   )
 }
 
+function TokenStats({ stats }) {
+  if (!stats || !stats.enabled) return null
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-2 bg-white/80 backdrop-blur-lg rounded-2xl border border-slate-200/50 text-xs">
+      <div className="flex items-center gap-1 text-purple-600">
+        <Zap className="w-4 h-4" />
+        <span className="font-semibold">Tokens: {(stats.total_tokens / 1000).toFixed(1)}K</span>
+      </div>
+      <div className="text-slate-500">
+        {stats.total_requests} req
+      </div>
+      <div className="text-slate-400">
+        Avg: {stats.average_tokens_per_request}
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [targetJson, setTargetJson] = useState('')
@@ -63,6 +82,7 @@ export default function App() {
   const [generatedTests, setGeneratedTests] = useState(null)
   const [copied, setCopied] = useState(false)
   const [cacheStats, setCacheStats] = useState(null)
+  const [tokenStats, setTokenStats] = useState(null)
   const [showValidation, setShowValidation] = useState(false)
 
   useEffect(() => {
@@ -77,6 +97,14 @@ export default function App() {
       setApiConnected(true)
       setApiProvider(result.llm_provider || 'auto')
       setCacheStats(result.cache || null)
+      
+      // Получаем статистику токенов
+      try {
+        const tokens = await getTokenStats()
+        setTokenStats(tokens)
+      } catch (e) {
+        console.log('Token stats not available')
+      }
     } catch (err) {
       setApiConnected(false)
     }
@@ -213,6 +241,7 @@ export default function App() {
             </div>
             <StatusBadge connected={apiConnected} provider={apiProvider} />
             <CacheStats stats={cacheStats} />
+            <TokenStats stats={tokenStats} />
           </div>
         </div>
       </header>

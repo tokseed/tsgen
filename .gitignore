@@ -60,6 +60,4 @@ htmlcov/
 
 # Local scripts (Windows)
 *.bat
-!run_backend.bat
-!run_frontend.bat
-!start.bat
+!setup_and_run.bat
