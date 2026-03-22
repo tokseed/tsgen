@@ -4,33 +4,44 @@ TypeScript Code Generator - Core Module
 """
 
 import os
+import csv
 import json
 import base64
 import uuid
 import requests
 import time
 import hashlib
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 from datetime import datetime, timedelta
-
-import pandas as pd
 
 try:
     from pypdf import PdfReader
 except ImportError:
     from PyPDF2 import PdfReader
 
-from docx import Document
-from PIL import Image
-import pytesseract
+try:
+    from docx import Document
+
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+try:
+    from PIL import Image
+
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 # Импорт кэша
 try:
     from cache import get_cache_manager
+
     CACHE_ENABLED = True
 except ImportError:
     CACHE_ENABLED = False
+
     def get_cache_manager():
         return None
 
@@ -70,8 +81,11 @@ class GigaChatAuth:
             }
 
             response = requests.post(
-                self.AUTH_URL, headers=headers, data={"scope": self.scope},
-                verify=False, timeout=30
+                self.AUTH_URL,
+                headers=headers,
+                data={"scope": self.scope},
+                verify=False,
+                timeout=30,
             )
             response.raise_for_status()
 
@@ -121,7 +135,7 @@ class GigaChatAuth:
                 self.MODELS_URL,
                 headers={"Authorization": f"Bearer {token}"},
                 verify=False,
-                timeout=10
+                timeout=10,
             )
             return {"status": "ok", "models": response.json()}
         except Exception as e:
@@ -144,21 +158,21 @@ class OpenRouterAuth:
     def __init__(self, api_key: str, model_preset: str = "balanced"):
         self.api_key = api_key
         self.model = self.MODELS.get(model_preset, self.MODELS["balanced"])
-        
+
         # LangFuse интеграция
         self.langfuse = None
         self._init_langfuse()
-    
+
     def _init_langfuse(self):
         """Инициализация LangFuse для трекинга."""
         try:
             from langfuse import Langfuse
             from langfuse.openai import openai as langfuse_openai
-            
+
             langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
             langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
             langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-            
+
             if langfuse_public_key and langfuse_secret_key:
                 self.langfuse = Langfuse(
                     public_key=langfuse_public_key,
@@ -174,12 +188,12 @@ class OpenRouterAuth:
     def chat(self, messages: list, model: str = None) -> str:
         """Отправка запроса к OpenRouter с трекингом LangFuse."""
         model_to_use = model or self.model
-        
+
         # Создаём trace в LangFuse
         trace = None
         span = None
         generation = None
-        
+
         if self.langfuse:
             try:
                 trace = self.langfuse.trace(
@@ -189,7 +203,7 @@ class OpenRouterAuth:
                         "provider": "openrouter",
                         "model": model_to_use,
                         "base_url": self.BASE_URL,
-                    }
+                    },
                 )
                 span = trace.span(name="openrouter-api-call")
             except Exception as e:
@@ -202,13 +216,15 @@ class OpenRouterAuth:
             for attempt in range(max_retries):
                 try:
                     start_time = time.time()
-                    
+
                     response = requests.post(
                         f"{self.BASE_URL}/chat/completions",
                         headers={
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json",
-                            "HTTP-Referer": os.getenv("APP_URL", "https://github.com/tsgen"),
+                            "HTTP-Referer": os.getenv(
+                                "APP_URL", "https://github.com/tsgen"
+                            ),
                             "X-Title": "TS Generator",
                         },
                         json={
@@ -222,7 +238,7 @@ class OpenRouterAuth:
                         },
                         timeout=120,
                     )
-                    
+
                     elapsed_time = time.time() - start_time
 
                     # Обработка ошибок API
@@ -239,14 +255,16 @@ class OpenRouterAuth:
 
                     # Проверка на ошибки в ответе
                     if "error" in result:
-                        error_msg = result["error"].get("message", "Неизвестная ошибка API")
+                        error_msg = result["error"].get(
+                            "message", "Неизвестная ошибка API"
+                        )
                         raise ValueError(f"Ошибка OpenRouter API: {error_msg}")
 
                     if "choices" not in result or len(result["choices"]) == 0:
                         raise ValueError("Пустой ответ от OpenRouter")
 
                     content = result["choices"][0]["message"]["content"]
-                    
+
                     # Получение метрик использования токенов
                     usage = result.get("usage", {})
                     prompt_tokens = usage.get("prompt_tokens", 0)
@@ -255,7 +273,7 @@ class OpenRouterAuth:
 
                     if not content or content.strip() == "":
                         raise ValueError("Пустое содержимое ответа")
-                    
+
                     # Обновление LangFuse с метриками
                     if self.langfuse and trace:
                         try:
@@ -278,7 +296,9 @@ class OpenRouterAuth:
 
                 except requests.exceptions.Timeout:
                     if attempt == max_retries - 1:
-                        raise ValueError("Таймаут соединения с OpenRouter. Попробуйте позже.")
+                        raise ValueError(
+                            "Таймаут соединения с OpenRouter. Попробуйте позже."
+                        )
                     time.sleep(retry_delay * (attempt + 1))
                 except requests.exceptions.RequestException as e:
                     if attempt == max_retries - 1:
@@ -286,7 +306,7 @@ class OpenRouterAuth:
                     time.sleep(retry_delay)
 
             raise ValueError("Не удалось выполнить запрос после нескольких попыток")
-            
+
         except Exception as e:
             # Логирование ошибки в LangFuse
             if self.langfuse and trace:
@@ -308,7 +328,7 @@ class OpenRouterAuth:
             response = requests.get(
                 f"{self.BASE_URL}/models",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=10
+                timeout=10,
             )
             if response.status_code == 200:
                 return {"status": "ok", "models": response.json()}
@@ -360,23 +380,89 @@ class FileProcessor:
 
     @staticmethod
     def _process_csv(filepath: str) -> tuple:
-        df = pd.read_csv(filepath, encoding="utf-8", nrows=50)
+        """Обработка CSV через встроенный модуль csv."""
+        with open(filepath, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        if not rows:
+            return "", {"columns": [], "rows_count": 0, "dtypes": {}}
+
+        headers = rows[0]
+        data_rows = rows[1:50]  # Первые 50 строк данных
+
+        # Определяем типы по первым значениям
+        dtypes = {}
+        if data_rows:
+            for i, header in enumerate(headers):
+                sample = data_rows[0][i] if i < len(data_rows[0]) else ""
+                if sample.isdigit():
+                    dtypes[header] = "int64"
+                elif sample.replace(".", "").replace("-", "").isdigit():
+                    dtypes[header] = "float64"
+                elif sample.lower() in ("true", "false"):
+                    dtypes[header] = "bool"
+                else:
+                    dtypes[header] = "object"
+
+        content_lines = [",".join(headers)]
+        content_lines.extend([",".join(row) for row in data_rows])
+
         structure = {
-            "columns": list(df.columns),
-            "rows_count": len(df),
-            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "columns": headers,
+            "rows_count": len(data_rows),
+            "dtypes": dtypes,
         }
-        return df.head(20).to_string(), structure
+        return "\n".join(content_lines), structure
 
     @staticmethod
     def _process_excel(filepath: str) -> tuple:
-        df = pd.read_excel(filepath, nrows=50)
-        structure = {
-            "columns": list(df.columns),
-            "rows_count": len(df),
-            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
-        }
-        return df.head(20).to_string(), structure
+        """Обработка Excel через openpyxl."""
+        try:
+            from openpyxl import load_workbook
+
+            wb = load_workbook(filepath, read_only=True, data_only=True)
+            ws = wb.active
+
+            rows = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i >= 51:  # Заголовок + 50 строк
+                    break
+                rows.append([str(cell) if cell is not None else "" for cell in row])
+            wb.close()
+
+            if not rows:
+                return "", {"columns": [], "rows_count": 0, "dtypes": {}}
+
+            headers = [str(h) if h else f"col_{i}" for i, h in enumerate(rows[0])]
+            data_rows = rows[1:]
+
+            dtypes = {}
+            if data_rows:
+                for i, header in enumerate(headers):
+                    sample = data_rows[0][i] if i < len(data_rows[0]) else ""
+                    if sample.isdigit():
+                        dtypes[header] = "int64"
+                    elif sample.replace(".", "").replace("-", "").isdigit():
+                        dtypes[header] = "float64"
+                    else:
+                        dtypes[header] = "object"
+
+            content_lines = [",".join(headers)]
+            content_lines.extend([",".join(row) for row in data_rows])
+
+            structure = {
+                "columns": headers,
+                "rows_count": len(data_rows),
+                "dtypes": dtypes,
+            }
+            return "\n".join(content_lines), structure
+        except ImportError:
+            return "Excel processing requires openpyxl", {
+                "error": "openpyxl not installed"
+            }
+        except Exception as e:
+            return f"Excel error: {e}", {"error": str(e)}
 
     @staticmethod
     def _process_pdf(filepath: str) -> tuple:
@@ -387,18 +473,25 @@ class FileProcessor:
 
     @staticmethod
     def _process_docx(filepath: str) -> tuple:
-        doc = Document(filepath)
-        text = "\n".join([p.text for p in doc.paragraphs[:100]])
+        """Обработка DOCX через python-docx."""
+        if not DOCX_AVAILABLE:
+            return "DOCX processing requires python-docx", {"error": "python-docx not installed"}
+        
+        try:
+            doc = Document(filepath)
+            text = "\n".join([p.text for p in doc.paragraphs[:100]])
 
-        tables_data = []
-        for table in doc.tables[:5]:
-            tables_data.append([[cell.text for cell in row.cells] for row in table.rows])
+            tables_data = []
+            for table in doc.tables[:5]:
+                tables_data.append(
+                    [[cell.text for cell in row.cells] for row in table.rows]
+                )
 
-        structure = {
-            "paragraphs": len(doc.paragraphs),
-            "tables": len(doc.tables),
-            "text_length": len(text),
-        }
+            structure = {
+                "paragraphs": len(doc.paragraphs),
+                "tables": len(doc.tables),
+                "text_length": len(text),
+            }
 
         content = text
         if tables_data:
@@ -412,10 +505,24 @@ class FileProcessor:
 
     @staticmethod
     def _process_image(filepath: str) -> tuple:
-        image = Image.open(filepath)
-        text = pytesseract.image_to_string(image, lang="rus+eng")
-        structure = {"size": image.size, "mode": image.mode, "text_length": len(text)}
-        return text[:5000], structure
+        """Обработка изображений через Pillow (OCR требует tesseract)."""
+        if not PIL_AVAILABLE:
+            return "Image processing requires Pillow", {"error": "Pillow not installed"}
+        
+        try:
+            image = Image.open(filepath)
+            structure = {"size": image.size, "mode": image.mode, "format": image.format}
+            
+            # Пытаемся использовать OCR если доступен
+            try:
+                import pytesseract
+                text = pytesseract.image_to_string(image, lang="rus+eng")
+                return text[:5000], {**structure, "text_length": len(text)}
+            except (ImportError, Exception):
+                # Если OCR недоступен, возвращаем метаданные
+                return f"[Image: {image.size[0]}x{image.size[1]}, {image.format}]", structure
+        except Exception as e:
+            return f"Image error: {e}", {"error": str(e)}
 
 
 class TypeScriptCodeGenerator:
@@ -648,7 +755,10 @@ function parseNumber(value: string, fieldName: string): number {{
             interface_name = "TargetData"
 
         messages = [
-            {"role": "system", "content": "Ты экспертный TypeScript разработчик. Верни ТОЛЬКО код без объяснений."},
+            {
+                "role": "system",
+                "content": "Ты экспертный TypeScript разработчик. Верни ТОЛЬКО код без объяснений.",
+            },
             {
                 "role": "user",
                 "content": self.SYSTEM_PROMPT.format(
@@ -786,7 +896,7 @@ export {{ transformData }};
         code = code.strip()
         for prefix in ["```typescript", "```ts", "```"]:
             if code.startswith(prefix):
-                code = code[len(prefix):]
+                code = code[len(prefix) :]
                 break
         if code.endswith("```"):
             code = code[:-3]
@@ -807,7 +917,10 @@ class ConverterAgent:
 
         return {
             "typescript_code": typescript_code,
-            "file_info": {"type": file_data["type"], "structure": file_data["structure"]},
+            "file_info": {
+                "type": file_data["type"],
+                "structure": file_data["structure"],
+            },
         }
 
 
