@@ -1,1 +1,0 @@
-# TypeScript Generator Backend Tests
