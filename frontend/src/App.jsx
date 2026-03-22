@@ -337,7 +337,6 @@ export default function App() {
             <CodeDisplay
               code={generatedCode}
               filename={resultFilename}
-              onGenerateTests={handleGenerateTests}
               onValidate={handleValidate}
               validation={validation}
               showValidation={showValidation}
@@ -346,7 +345,7 @@ export default function App() {
               targetJson={targetJson}
               selectedFile={selectedFile}
               onCodeUpdate={setGeneratedCode}
-              onGenerate={handleGenerate}
+              isGenerating={isGenerating}
             />
           ) : (
             <EmptyState />
