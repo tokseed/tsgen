@@ -1,40 +1,47 @@
 @echo off
+chcp 65001 >nul 2>&1
+setlocal EnableDelayedExpansion
+
 echo ========================================
-echo  Запуск БЭКЕНДА
+echo  TSGen - Backend Only
 echo ========================================
 echo.
 
-REM Проверка venv
-if not exist "venv\" (
-    echo [ERROR] Виртуальное окружение не найдено!
-    echo Запустите start.bat для первоначальной настройки
+cd /d "%~dp0"
+
+:: Check venv
+if not exist "venv" (
+    echo [ERROR] venv not found! Run start.bat first
     pause
     exit /b 1
 )
 
-REM Определение пути к Python (bin для Linux-style, Scripts для Windows)
+:: Find Python
 if exist "venv\bin\python.exe" (
-    set VENV_PYTHON=venv\bin\python.exe
+    set "VENV_PY=venv\bin\python.exe"
 ) else if exist "venv\Scripts\python.exe" (
-    set VENV_PYTHON=venv\Scripts\python.exe
+    set "VENV_PY=venv\Scripts\python.exe"
 ) else (
-    echo [ERROR] Python в venv не найден!
+    echo [ERROR] venv Python not found!
     pause
     exit /b 1
 )
 
-REM Установка зависимостей
-echo [INFO] Установка зависимостей...
-%VENV_PYTHON% -m pip install -r requirements.txt -q 2>nul
+:: Install deps if needed
+!VENV_PY! -c "import fastapi" 2>nul
+if errorlevel 1 (
+    echo [INFO] Installing dependencies...
+    !VENV_PY! -m pip install -r requirements.txt -q
+)
 
-echo [INFO] Запуск сервера на http://localhost:8000
+echo [OK] Starting backend on http://localhost:8000
 echo.
-echo API доступно:
-echo   - Health: http://localhost:8000/api/health
-echo   - Generate: http://localhost:8000/api/generate
-echo   - Docs: http://localhost:8000/docs
+echo API Endpoints:
+echo   - http://localhost:8000/api/health
+echo   - http://localhost:8000/api/generate
+echo   - http://localhost:8000/docs
 echo.
-echo Нажмите Ctrl+C для остановки
+echo Press Ctrl+C to stop
 echo.
 
-%VENV_PYTHON% src\main.py
+!VENV_PY! -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000

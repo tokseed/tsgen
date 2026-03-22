@@ -1,30 +1,39 @@
 @echo off
+chcp 65001 >nul 2>&1
+setlocal EnableDelayedExpansion
+
 echo ========================================
-echo  Запуск ФРОНТЕНДА
+echo  TSGen - Frontend Only
 echo ========================================
 echo.
 
-REM Проверка Node.js
-node --version >nul 2>&1
+cd /d "%~dp0"
+
+:: Check Node.js
+where node >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Node.js не найден!
+    echo [ERROR] Node.js not found!
+    echo Install from https://nodejs.org/
     pause
     exit /b 1
 )
 
-REM Проверка node_modules
-if not exist "frontend\node_modules\" (
-    echo [INFO] Установка зависимостей...
+for /f "delims=" %%i in ('node --version 2^>^&1') do echo [OK] Node.js: %%i
+
+:: Install deps if needed
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing dependencies...
     cd frontend
-    call npm install --silent
+    call npm install
     cd ..
 )
 
-echo [INFO] Запуск сервера разработки...
 echo.
-echo Фронтенд доступен на: http://localhost:5173
+echo [OK] Starting frontend on http://localhost:5173
 echo.
-echo Нажмите Ctrl+C для остановки
+echo Make sure backend is running on http://localhost:8000
+echo.
+echo Press Ctrl+C to stop
 echo.
 
 cd frontend
